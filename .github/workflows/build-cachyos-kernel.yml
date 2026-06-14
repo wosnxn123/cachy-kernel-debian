@@ -78,6 +78,7 @@ jobs:
             flex \
             git \
             kmod \
+            libdw-dev \
             libelf-dev \
             libssl-dev \
             lintian \
