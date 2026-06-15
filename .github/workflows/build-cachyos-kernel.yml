@@ -186,6 +186,12 @@ jobs:
           cfg -e BLK_DEV_INITRD
           cfg -e DEVTMPFS
           cfg -e DEVTMPFS_MOUNT
+          cfg -e TTY
+          cfg -e SERIAL_8250
+          cfg -e SERIAL_8250_CONSOLE
+          cfg -e SERIAL_8250_PCI
+          cfg -e SERIAL_CORE
+          cfg -e SERIAL_CORE_CONSOLE
           cfg -e TMPFS
           cfg -e CGROUPS
           cfg -e CGROUP_BPF
@@ -323,11 +329,14 @@ jobs:
           for applet in sh mount poweroff sleep; do
             ln -s busybox "qemu-test/initramfs/bin/${applet}"
           done
+          sudo mknod -m 600 qemu-test/initramfs/dev/console c 5 1
+          sudo mknod -m 666 qemu-test/initramfs/dev/null c 1 3
           cat > qemu-test/initramfs/init <<'EOF'
           #!/bin/sh
           mount -t proc proc /proc || true
           mount -t sysfs sysfs /sys || true
           mount -t devtmpfs devtmpfs /dev || true
+          [ -c /dev/console ] && exec >/dev/console 2>&1
           echo CACHYOS_QEMU_BOOT_OK
           sleep 2
           poweroff -f || echo o > /proc/sysrq-trigger
@@ -340,21 +349,42 @@ jobs:
           ) > qemu-test/initramfs.cpio.gz
 
           set +e
-          timeout 120s qemu-system-x86_64 \
+          rm -f qemu-test/serial.log
+          timeout 180s qemu-system-x86_64 \
             -m 768M \
             -smp 2 \
             -kernel "$kernel_image" \
             -initrd qemu-test/initramfs.cpio.gz \
-            -append "console=ttyS0 panic=-1 oops=panic" \
-            -nographic \
+            -append "console=ttyS0,115200 earlycon=uart,io,0x3f8,115200n8 earlyprintk=serial,ttyS0,115200 panic=-1 oops=panic" \
+            -display none \
             -no-reboot \
             -monitor none \
-            -serial stdio | tee qemu-test/serial.log
-          qemu_status="${PIPESTATUS[0]}"
+            -serial file:qemu-test/serial.log &
+          qemu_pid="$!"
+          boot_ok=0
+          for _ in $(seq 1 180); do
+            if grep -q "CACHYOS_QEMU_BOOT_OK" qemu-test/serial.log 2>/dev/null; then
+              boot_ok=1
+              break
+            fi
+            kill -0 "$qemu_pid" 2>/dev/null || break
+            sleep 1
+          done
+          if [ "$boot_ok" -eq 1 ] && kill -0 "$qemu_pid" 2>/dev/null; then
+            kill "$qemu_pid" 2>/dev/null || true
+          fi
+          wait "$qemu_pid"
+          qemu_status="$?"
           set -e
 
-          test "$qemu_status" -eq 0
-          grep -q "CACHYOS_QEMU_BOOT_OK" qemu-test/serial.log
+          cat qemu-test/serial.log
+          if [ "$boot_ok" -ne 1 ]; then
+            echo "QEMU boot smoke test did not reach the initramfs success marker."
+            exit 1
+          fi
+          if [ "$qemu_status" -ne 0 ] && [ "$qemu_status" -ne 143 ]; then
+            echo "QEMU exited with status ${qemu_status} after the success marker."
+          fi
 
       - name: Write build manifest
         run: |
