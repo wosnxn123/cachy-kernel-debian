@@ -37,6 +37,21 @@ on:
         required: true
         default: true
         type: boolean
+      publish_release:
+        description: "Create/update a GitHub Release and upload the .deb files"
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag to create/update. Leave blank to auto-generate one."
+        required: false
+        default: ""
+        type: string
+      mark_latest:
+        description: "Mark the created/updated release as the latest release"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -429,6 +444,30 @@ jobs:
             sha256sum artifacts/*.deb
           } > artifacts/BUILD-MANIFEST.txt
 
+      - name: Resolve release metadata
+        id: release
+        if: ${{ inputs.publish_release || startsWith(github.ref, 'refs/tags/') }}
+        env:
+          RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
+          PKGVER: ${{ steps.cachyos.outputs.pkgver }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euxo pipefail
+          release_tag="${RELEASE_TAG_INPUT}"
+
+          if [ -z "${release_tag}" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "${release_tag}" ]; then
+            release_tag="cachyos-debian-${KERNEL_VARIANT}-${PKGVER}-${RUN_NUMBER}"
+          fi
+
+          {
+            echo "tag=${release_tag}"
+            echo "name=CachyOS Debian Kernel ${release_tag}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -439,11 +478,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish release assets for tags
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish release assets
+        if: ${{ steps.release.outputs.tag != '' }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.release.outputs.name }}
+          body_path: artifacts/BUILD-MANIFEST.txt
           files: |
             artifacts/*.deb
             artifacts/BUILD-MANIFEST.txt
+          fail_on_unmatched_files: true
           generate_release_notes: true
+          make_latest: ${{ inputs.mark_latest && 'true' || 'false' }}
