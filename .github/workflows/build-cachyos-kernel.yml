@@ -166,7 +166,15 @@ jobs:
           cfg -e IKCONFIG
           cfg -e IKCONFIG_PROC
           cfg -e CACHY
-          cfg -d GENERIC_CPU
+          cfg -e GENERIC_CPU
+          for cpu_opt in \
+            GENERIC_CPU2 GENERIC_CPU3 GENERIC_CPU4 MNATIVE MPSC MATOM MCORE2 \
+            MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
+            MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
+            MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
+            MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
+            cfg -d "${cpu_opt}"
+          done
           cfg --set-val X86_64_VERSION 1
           cfg -e HZ_1000 --set-val HZ 1000
           cfg -e PREEMPT_DYNAMIC
@@ -184,14 +192,22 @@ jobs:
           cfg -e EFI_PARTITION
 
           cfg -e BLK_DEV_INITRD
+          cfg -e BINFMT_ELF
+          cfg -e BINFMT_SCRIPT
           cfg -e DEVTMPFS
           cfg -e DEVTMPFS_MOUNT
+          cfg -e PRINTK
+          cfg -e EARLY_PRINTK
           cfg -e TTY
           cfg -e SERIAL_8250
           cfg -e SERIAL_8250_CONSOLE
           cfg -e SERIAL_8250_PCI
+          cfg -e SERIAL_EARLYCON
           cfg -e SERIAL_CORE
           cfg -e SERIAL_CORE_CONSOLE
+          cfg -e RD_GZIP
+          cfg -e RD_ZSTD
+          cfg -e RD_XZ
           cfg -e TMPFS
           cfg -e CGROUPS
           cfg -e CGROUP_BPF
@@ -269,7 +285,18 @@ jobs:
           cfg -m VIRTIO_CONSOLE
 
           make olddefconfig
-          scripts/config --state MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS KVM VFIO_PCI || true
+          grep -E 'CONFIG_(GENERIC_CPU|GENERIC_CPU[234]|X86_64_VERSION|BLK_DEV_INITRD|RD_GZIP|SERIAL_8250_CONSOLE)=' .config || true
+          scripts/config --state MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD || true
+          for required_config in \
+            CONFIG_GENERIC_CPU=y \
+            CONFIG_BLK_DEV_INITRD=y \
+            CONFIG_BINFMT_ELF=y \
+            CONFIG_BINFMT_SCRIPT=y \
+            CONFIG_PRINTK=y \
+            CONFIG_SERIAL_8250=y \
+            CONFIG_SERIAL_8250_CONSOLE=y; do
+            grep -qx "${required_config}" .config
+          done
 
       - name: Compile kernel and create Debian packages
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
@@ -345,17 +372,19 @@ jobs:
 
           (
             cd qemu-test/initramfs
-            find . -print0 | cpio --null -ov --format=newc | gzip -9
-          ) > qemu-test/initramfs.cpio.gz
+            find . -print0 | cpio --null -ov --format=newc
+          ) > qemu-test/initramfs.cpio
 
           set +e
           rm -f qemu-test/serial.log
           timeout 180s qemu-system-x86_64 \
-            -m 768M \
+            -machine pc,accel=tcg \
+            -cpu max \
+            -m 2048M \
             -smp 2 \
             -kernel "$kernel_image" \
-            -initrd qemu-test/initramfs.cpio.gz \
-            -append "console=ttyS0,115200 earlycon=uart,io,0x3f8,115200n8 earlyprintk=serial,ttyS0,115200 panic=-1 oops=panic" \
+            -initrd qemu-test/initramfs.cpio \
+            -append "rdinit=/init init=/init console=ttyS0,115200 earlycon=uart,io,0x3f8,115200n8 earlyprintk=serial,ttyS0,115200 edd=off panic=30 oops=panic" \
             -display none \
             -no-reboot \
             -monitor none \
