@@ -1,3 +1,5 @@
+![assets/cachydebian.png](assets/cachydebian.png)
+
 # CachyOS Kernel Debian Builder
 
 This repository contains a GitHub Actions workflow for building the latest
