@@ -37,6 +37,7 @@ maintainer must explicitly start it from the GitHub Actions tab with the
 3. Select **Build CachyOS Kernel Debian Packages**.
 4. Click **Run workflow**.
 5. Choose the desired inputs:
+   - `runner`: GitHub-hosted or Blacksmith runner size.
    - `kernel_variant`: CachyOS package variant to build.
    - `cpu_scheduler`: scheduler/config flavor.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
@@ -47,6 +48,23 @@ Kernel builds are large and slow. A full run can take several hours and uses a
 significant amount of GitHub-hosted runner disk space.
 
 ## Available Build Inputs
+
+### `runner`
+
+Supported values:
+
+- `blacksmith-8vcpu-ubuntu-2404`
+- `blacksmith-16vcpu-ubuntu-2404`
+- `blacksmith-32vcpu-ubuntu-2404`
+- `ubuntu-24.04`
+
+The default is `blacksmith-16vcpu-ubuntu-2404`, which is a good fit for kernel
+compilation because it provides substantially more CPU, memory, and disk space
+than the default GitHub-hosted Ubuntu runner.
+
+Blacksmith runners require the Blacksmith GitHub integration to be installed and
+enabled for the repository's organization. If Blacksmith is not configured, use
+the `ubuntu-24.04` fallback runner.
 
 ### `kernel_variant`
 
