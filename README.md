@@ -1,4 +1,10 @@
-![assets/cachydebian.png](assets/cachydebian.png)
+<table>
+  <tr>
+    <td align="center" style="border: 3px solid #6effaf; border-radius: 5px; overflow: hidden; padding: 0;">
+      <img src="assets/cachydebian.png" width="500" style="display: block;">
+    </td>
+  </tr>
+</table>
 
 # CachyOS Kernel Debian Builder
 
