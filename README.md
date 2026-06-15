@@ -41,6 +41,10 @@ maintainer must explicitly start it from the GitHub Actions tab with the
    - `kernel_variant`: CachyOS package variant to build.
    - `cpu_scheduler`: scheduler/config flavor.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
+   - `publish_release`: whether to upload the final packages to a GitHub
+     Release.
+   - `release_tag`: optional tag to create/update when publishing a Release.
+   - `mark_latest`: whether the Release should be marked as the latest.
 6. Wait for the build to finish.
 7. Download the generated artifacts from the workflow run.
 
@@ -99,6 +103,31 @@ CPU-model and initramfs decompression failures.
 
 The default is enabled for manual runs.
 
+### `publish_release`
+
+When enabled, the workflow creates or updates a GitHub Release and uploads the
+generated `.deb` packages plus `BUILD-MANIFEST.txt`.
+
+The default is disabled, so normal manual runs only upload workflow artifacts.
+
+### `release_tag`
+
+Optional release tag to create or update when `publish_release` is enabled.
+
+If left blank, the workflow generates a tag like:
+
+```text
+cachyos-debian-linux-cachyos-7.0.12-5
+```
+
+If the workflow is manually run from an existing tag ref, that tag is used unless
+`release_tag` is set.
+
+### `mark_latest`
+
+Controls whether the created or updated GitHub Release is marked as the latest
+release. The default is enabled.
+
 ## Desktop-Oriented Kernel Configuration
 
 The workflow starts from the CachyOS kernel configuration and then ensures common
@@ -139,9 +168,14 @@ The workflow performs package validation before uploading artifacts:
 
 Artifacts are always uploaded to the workflow run.
 
-If a maintainer manually runs the workflow against a tag ref, the workflow can
-also publish the generated `.deb` packages and `BUILD-MANIFEST.txt` as GitHub
-Release assets.
+To publish the generated `.deb` packages to GitHub Releases, run the workflow
+manually with `publish_release` enabled. You can either provide a `release_tag`
+or leave it blank and let the workflow generate one from the kernel variant,
+kernel version, and workflow run number.
+
+The release publisher uses the workflow `GITHUB_TOKEN`, so the repository must
+allow GitHub Actions to write repository contents. This workflow already declares
+`contents: write`.
 
 ## Installing Packages
 
