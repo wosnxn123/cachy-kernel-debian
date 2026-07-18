@@ -70,11 +70,7 @@ jobs:
           changed=false
           for variant in linux-cachyos-server linux-cachyos-rc; do
             cd "${GITHUB_WORKSPACE}/upstream/${variant}"
-            if [ "${variant}" = "linux-cachyos-server" ]; then
-              export _cpusched=eevdf
-            else
-              export _cpusched=cachyos
-            fi
+            export _cpusched=cachyos
             export _processor_opt=generic_v2
             export _use_llvm_lto=none
             export _use_gcc_suffix=no
@@ -83,11 +79,11 @@ jobs:
             export _build_r8125=no
             export _build_debug=no
             export _localmodcfg=no
-            export _cachy_config=no
-            export _HZ_ticks=300
-            export _tickrate=idle
-            export _preempt=lazy
-            export _hugepage=madvise
+            export _cachy_config=yes
+            export _HZ_ticks=1000
+            export _tickrate=full
+            export _preempt=full
+            export _hugepage=always
             source PKGBUILD
 
             for cpu_level in 1 2 3; do
@@ -123,10 +119,11 @@ jobs:
     timeout-minutes: 720
     env:
       KERNEL_VARIANT: ${{ matrix.track == 'aggressive' && 'linux-cachyos-rc' || 'linux-cachyos-server' }}
-      CPU_SCHEDULER: ${{ matrix.track == 'aggressive' && 'cachyos' || 'eevdf' }}
+      CPU_SCHEDULER: cachyos
       CPU_TARGET: ${{ matrix.cpu_target }}
       CPU_LEVEL: ${{ matrix.cpu_level }}
-      BUILD_PROFILE: ${{ matrix.track }}
+      BUILD_PROFILE: aggressive
+      BUILD_TRACK: ${{ matrix.track }}
 
     steps:
       - name: Check out workflow repository
@@ -520,6 +517,7 @@ jobs:
             echo "Source name: ${{ steps.cachyos.outputs.srcname }}"
             echo "Version: ${{ steps.cachyos.outputs.pkgver }}-${{ steps.cachyos.outputs.pkgrel }}"
             echo "Variant: ${KERNEL_VARIANT}"
+            echo "Source track: ${BUILD_TRACK}"
             echo "Profile: ${BUILD_PROFILE}"
             echo "Scheduler: ${CPU_SCHEDULER}"
             echo "CPU target: ${CPU_TARGET}"
@@ -548,17 +546,17 @@ jobs:
 
           if [ -z "${release_tag}" ]; then
             if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-              release_tag="cachyos-debian-${BUILD_PROFILE}-${PKGVER}-${PKGREL}-x64v${CPU_LEVEL}"
+              release_tag="cachyos-debian-${BUILD_TRACK}-${PKGVER}-${PKGREL}-x64v${CPU_LEVEL}"
             else
-              release_tag="cachyos-debian-${BUILD_PROFILE}-${PKGVER}-${RUN_NUMBER}-x64v${CPU_LEVEL}"
+              release_tag="cachyos-debian-${BUILD_TRACK}-${PKGVER}-${RUN_NUMBER}-x64v${CPU_LEVEL}"
             fi
           else
-            release_tag="${release_tag}-${BUILD_PROFILE}-x64v${CPU_LEVEL}"
+            release_tag="${release_tag}-${BUILD_TRACK}-x64v${CPU_LEVEL}"
           fi
 
           {
             echo "tag=${release_tag}"
-            echo "name=CachyOS Debian Kernel ${BUILD_PROFILE} x86-64-v${CPU_LEVEL} ${release_tag}"
+            echo "name=CachyOS Debian Kernel ${BUILD_TRACK} source, aggressive profile, x86-64-v${CPU_LEVEL}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifacts

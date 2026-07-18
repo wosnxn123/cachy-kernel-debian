@@ -25,8 +25,12 @@ result with the kernel's upstream Debian packaging target.
 
 Each run builds six packages:
 
-- Stable `linux-cachyos-server` with x86-64-v1/v2/v3.
-- Latest `linux-cachyos-rc` with the CachyOS scheduler and x86-64-v1/v2/v3.
+- Stable source track: `linux-cachyos-server` with x86-64-v1/v2/v3.
+- Latest RC source track: `linux-cachyos-rc` with x86-64-v1/v2/v3.
+
+Both tracks use the same aggressive server configuration. Only the upstream
+source track and kernel version differ, so the two tracks can be compared more
+fairly.
 
 The kernel localversion and package/release names contain `x64v1`, `x64v2`, or
 `x64v3`, so the required CPU baseline is visible in `uname -r`, package names,
@@ -106,12 +110,9 @@ Before installing a package, check the target machine's CPU flags with
 baseline. `x64v2` is not a CPU model name; it is a minimum instruction-set
 level, and `x64v3` is a stricter level intended for newer machines.
 
-The stable and aggressive tracks intentionally use different profiles. Stable
-uses the upstream server configuration with EEVDF, 300 Hz, idle tickless, lazy
-preemption, and THP madvise. The RC track uses the newest release candidate
-with the CachyOS scheduler, 1000 Hz, full tickless, full preemption, and THP
-always. They are therefore different stability/performance products, not a
-strict apples-to-apples benchmark of two source versions.
+The stable and RC tracks use the same aggressive profile: the CachyOS scheduler,
+1000 Hz, full tickless, full preemption, and THP always. The stable/RC label
+describes the source track, not a different tuning profile.
 
 ### `run_qemu_smoke_test`
 
@@ -152,14 +153,16 @@ release. The default is enabled.
 
 ## Server-Oriented Kernel Configuration
 
-The workflow starts from the matching CachyOS configuration and applies separate
-profiles:
+The workflow starts from the matching CachyOS configuration and applies the
+same aggressive server profile to both source tracks:
 
-- Stable: EEVDF, 300 Hz, idle tickless, lazy preemption, and THP madvise.
-- Aggressive RC: CachyOS scheduler, 1000 Hz, full tickless, full preemption,
-  and THP always.
+- CachyOS scheduler
+- 1000 Hz
+- full tickless
+- full preemption
+- THP always
 
-Both profiles ensure common Debian server requirements, including:
+The profile also ensures common Debian server requirements, including:
 
 - initramfs booting
 - loadable kernel modules

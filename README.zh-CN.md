@@ -8,9 +8,12 @@
 
 每次构建包含两条内核线和三个 CPU 基线，共六个构建：
 
-- 稳定服务器版：`linux-cachyos-server` + EEVDF。
-- 最新激进测试版：`linux-cachyos-rc` + CachyOS 调度器。
+- 稳定源码轨道：`linux-cachyos-server`。
+- 最新 RC 源码轨道：`linux-cachyos-rc`。
 - 每条内核线均构建 `x64v1`、`x64v2`、`x64v3`。
+
+两条源码轨道使用完全相同的激进服务器配置；区别只有上游源码轨道和
+内核版本，便于公平比较稳定源码与 RC 源码。
 
 内核版本、`uname -r`、`.deb` 包名、Release 名称、Workflow Artifact 名称和 `BUILD-MANIFEST.txt` 都会标明 `x64v1`、`x64v2` 或 `x64v3`。
 
@@ -41,10 +44,9 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 - 生成每个 CPU 基线独立的 Release；
 - 上传带 `x64vN` 标识的 `.deb` 和 `BUILD-MANIFEST.txt`；
 - 使用 QEMU 做最小启动测试；
-- 稳定版使用 300 Hz、idle tickless、lazy preemption、THP madvise；
-- 激进 RC 使用 1000 Hz、full tickless、full preemption、THP always。
+- 两条源码轨道都使用 1000 Hz、full tickless、full preemption、THP always；
 
-稳定版和激进 RC 的配置不同是有意的：稳定版优先可预测性和长期运行，RC 版优先测试最新内核和更激进的调度参数。因此两者不是只更换内核源码的公平性能对比；要做严格对比，应使用相同 profile。
+稳定源码轨道和 RC 源码轨道使用相同的激进 profile：CachyOS 调度器、1000 Hz、full tickless、full preemption、THP always。稳定/RC 只表示源码来源，不表示不同的调参方案。
 
 ## 手动构建
 
