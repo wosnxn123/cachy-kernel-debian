@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 required_env=(
   KERNEL_VARIANT REQUESTED_CPU_SCHEDULER CPU_TARGET CPU_LEVEL
-  BUILD_PROFILE BUILD_TRACK RUN_QEMU_SMOKE_TEST PUBLISH_RELEASE
+  BUILD_PROFILE BUILD_TRACK CONFIG_MODE RUN_QEMU_SMOKE_TEST PUBLISH_RELEASE
   GITHUB_REPOSITORY GITHUB_SHA GITHUB_RUN_NUMBER
 )
 for name in "${required_env[@]}"; do
@@ -17,6 +17,10 @@ done
 case "${CPU_TARGET}:${CPU_LEVEL}" in
   generic:1|generic_v2:2|generic_v3:3) ;;
   *) echo "CPU target and level do not match: ${CPU_TARGET}:${CPU_LEVEL}" >&2; exit 1 ;;
+esac
+case "${CONFIG_MODE}" in
+  upstream|server-kvm) ;;
+  *) echo "Unsupported configuration mode: ${CONFIG_MODE}" >&2; exit 1 ;;
 esac
 
 workspace="${CNB_BUILD_WORKSPACE:-$(pwd)}"
@@ -113,54 +117,57 @@ cfg() {
   scripts/config "$@" || true
 }
 
-cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
-cfg --set-str SYSTEM_TRUSTED_KEYS ""
-cfg --set-str SYSTEM_REVOCATION_KEYS ""
-cfg -d DEBUG_INFO
-cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-cfg -d DEBUG_INFO_BTF
-cfg -e MODULES
-cfg -e MODULE_UNLOAD
-cfg -e KALLSYMS
-cfg -e KALLSYMS_ALL
-cfg -e IKCONFIG
-cfg -e IKCONFIG_PROC
-cfg -e GENERIC_CPU
-for cpu_opt in \
-  GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
-  MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
-  MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
-  MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
-  MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
-  cfg -d "${cpu_opt}"
-done
+cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}-${CONFIG_MODE}"
 case "${CPU_TARGET}" in
   generic) cfg --set-val X86_64_VERSION 1 ;;
   generic_v2) cfg --set-val X86_64_VERSION 2 ;;
   generic_v3) cfg --set-val X86_64_VERSION 3 ;;
 esac
 
-for enabled in \
-  HIGH_RES_TIMERS CPU_FREQ CPU_FREQ_GOV_SCHEDUTIL X86_AMD_PSTATE ACPI EFI \
-  EFI_STUB EFI_PARTITION BLK_DEV_INITRD BINFMT_ELF BINFMT_SCRIPT DEVTMPFS \
-  DEVTMPFS_MOUNT PRINTK EARLY_PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE \
-  SERIAL_8250_PCI SERIAL_EARLYCON SERIAL_CORE SERIAL_CORE_CONSOLE RD_GZIP \
-  RD_ZSTD RD_XZ TMPFS CGROUPS CGROUP_BPF PSI BPF BPF_SYSCALL BPF_JIT NET \
-  INET NETFILTER INPUT INPUT_EVDEV HID WLAN IWLWIFI_OPMODE_MODULAR DRM \
-  FB_EFI FRAMEBUFFER_CONSOLE ZSWAP; do
-  cfg -e "${enabled}"
-done
+if [ "${CONFIG_MODE}" = "server-kvm" ]; then
+  cfg --set-str SYSTEM_TRUSTED_KEYS ""
+  cfg --set-str SYSTEM_REVOCATION_KEYS ""
+  cfg -d DEBUG_INFO
+  cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+  cfg -d DEBUG_INFO_BTF
+  cfg -e MODULES
+  cfg -e MODULE_UNLOAD
+  cfg -e KALLSYMS
+  cfg -e KALLSYMS_ALL
+  cfg -e IKCONFIG
+  cfg -e IKCONFIG_PROC
+  cfg -e GENERIC_CPU
+  for cpu_opt in \
+    GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
+    MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
+    MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
+    MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
+    MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
+    cfg -d "${cpu_opt}"
+  done
 
-for module in \
-  NF_TABLES BRIDGE VLAN_8021Q WIREGUARD HID_GENERIC HID_MULTITOUCH \
-  I2C_HID_ACPI USB_HID USB_XHCI_HCD USB_STORAGE UVC_VIDEO SND_HDA_INTEL \
-  SND_USB_AUDIO DRM_AMDGPU DRM_I915 DRM_NOUVEAU DRM_VIRTIO_GPU BT \
-  BT_HCIBTUSB CFG80211 MAC80211 IWLWIFI ATH10K ATH11K RTW88 RTW89 MT76 \
-  EXT4_FS BTRFS_FS XFS_FS F2FS_FS EXFAT_FS NTFS3_FS NFS_FS CIFS \
-  OVERLAY_FS SQUASHFS ZRAM KVM KVM_INTEL KVM_AMD VFIO VFIO_PCI VIRTIO \
-  VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE; do
-  cfg -m "${module}"
-done
+  for enabled in \
+    HIGH_RES_TIMERS CPU_FREQ CPU_FREQ_GOV_SCHEDUTIL X86_AMD_PSTATE ACPI EFI \
+    EFI_STUB EFI_PARTITION BLK_DEV_INITRD BINFMT_ELF BINFMT_SCRIPT DEVTMPFS \
+    DEVTMPFS_MOUNT PRINTK EARLY_PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE \
+    SERIAL_8250_PCI SERIAL_EARLYCON SERIAL_CORE SERIAL_CORE_CONSOLE RD_GZIP \
+    RD_ZSTD RD_XZ TMPFS CGROUPS CGROUP_BPF PSI BPF BPF_SYSCALL BPF_JIT NET \
+    INET NETFILTER INPUT INPUT_EVDEV HID WLAN IWLWIFI_OPMODE_MODULAR DRM \
+    FB_EFI FRAMEBUFFER_CONSOLE ZSWAP; do
+    cfg -e "${enabled}"
+  done
+
+  for module in \
+    NF_TABLES BRIDGE VLAN_8021Q WIREGUARD HID_GENERIC HID_MULTITOUCH \
+    I2C_HID_ACPI USB_HID USB_XHCI_HCD USB_STORAGE UVC_VIDEO SND_HDA_INTEL \
+    SND_USB_AUDIO DRM_AMDGPU DRM_I915 DRM_NOUVEAU DRM_VIRTIO_GPU BT \
+    BT_HCIBTUSB CFG80211 MAC80211 IWLWIFI ATH10K ATH11K RTW88 RTW89 MT76 \
+    EXT4_FS BTRFS_FS XFS_FS F2FS_FS EXFAT_FS NTFS3_FS NFS_FS CIFS \
+    OVERLAY_FS SQUASHFS ZRAM KVM KVM_INTEL KVM_AMD VFIO VFIO_PCI VIRTIO \
+    VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE; do
+    cfg -m "${module}"
+  done
+fi
 
 build_flags=()
 case "${USE_LLVM_LTO}" in
@@ -170,17 +177,21 @@ case "${USE_LLVM_LTO}" in
 esac
 
 make "${build_flags[@]}" olddefconfig
-for required_config in \
-  CONFIG_GENERIC_CPU=y \
-  CONFIG_X86_64_VERSION="${CPU_LEVEL}" \
-  CONFIG_BLK_DEV_INITRD=y \
-  CONFIG_BINFMT_ELF=y \
-  CONFIG_BINFMT_SCRIPT=y \
-  CONFIG_PRINTK=y \
-  CONFIG_SERIAL_8250=y \
-  CONFIG_SERIAL_8250_CONSOLE=y; do
+for required_config in CONFIG_X86_64_VERSION="${CPU_LEVEL}"; do
   grep -qx "${required_config}" .config
 done
+if [ "${CONFIG_MODE}" = "server-kvm" ]; then
+  for required_config in \
+    CONFIG_GENERIC_CPU=y \
+    CONFIG_BLK_DEV_INITRD=y \
+    CONFIG_BINFMT_ELF=y \
+    CONFIG_BINFMT_SCRIPT=y \
+    CONFIG_PRINTK=y \
+    CONFIG_SERIAL_8250=y \
+    CONFIG_SERIAL_8250_CONSOLE=y; do
+    grep -qx "${required_config}" .config
+  done
+fi
 grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
 case "${USE_LLVM_LTO}" in
   none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
@@ -279,6 +290,7 @@ fi
   echo "Variant: ${KERNEL_VARIANT}"
   echo "Source track: ${BUILD_TRACK}"
   echo "Profile: ${BUILD_PROFILE}"
+  echo "Configuration mode: ${CONFIG_MODE}"
   echo "Scheduler: ${CPU_SCHEDULER}"
   echo "CachyOS config: ${CACHY_CONFIG}"
   echo "Timer frequency: ${HZ_TICKS} Hz"
@@ -292,7 +304,7 @@ fi
   echo "KCFI requested upstream: ${USE_KCFI}"
   echo "CPU target: ${CPU_TARGET}"
   echo "CPU baseline: x86-64-v${CPU_LEVEL}"
-  echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
+  echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}-${CONFIG_MODE}"
   echo "Build provider: CNB Cloud Native Build ($(nproc) vCPU)"
   echo "GitHub Actions run: ${GITHUB_RUN_ID:-unknown}"
   echo "Built at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -304,11 +316,11 @@ if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
   if [ "${BUILD_TRACK}" = "custom" ]; then
     release_variant="${KERNEL_VARIANT#linux-cachyos-}"
-    release_tag="cachyos-debian-custom-${release_variant}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+    release_tag="cachyos-debian-custom-${release_variant}-${CONFIG_MODE}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   else
-    release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+    release_tag="cachyos-debian-${BUILD_TRACK}-${CONFIG_MODE}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   fi
-  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, x86-64-v${CPU_LEVEL}"
+  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, ${CONFIG_MODE}, x86-64-v${CPU_LEVEL}"
   release_flags=(--repo "${GITHUB_REPOSITORY}" --title "${release_name}" --notes-file artifacts/BUILD-MANIFEST.txt)
   if [ "${BUILD_TRACK}" = "aggressive" ]; then
     release_flags+=(--prerelease)

@@ -56,7 +56,7 @@ jobs:
           export _localmodcfg=no
           source PKGBUILD
 
-          release_tag="cachyos-debian-aggressive-${pkgver}-${pkgrel}-x64v2"
+          release_tag="cachyos-debian-aggressive-upstream-${pkgver}-${pkgrel}-x64v2"
           if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             echo "build=false" >> "${GITHUB_OUTPUT}"
           else
@@ -80,6 +80,7 @@ jobs:
       kernel_variant: linux-cachyos-rc
       cpu_target: generic_v2
       cpu_scheduler: upstream-default
+      config_mode: upstream
       run_qemu_smoke_test: true
       publish_release: true
       mark_latest: false
