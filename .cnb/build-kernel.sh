@@ -14,6 +14,9 @@ for name in "${required_env[@]}"; do
   fi
 done
 
+# This Debian builder always applies the repository's server/KVM compatibility pass.
+CONFIG_MODE=server-kvm
+
 case "${CPU_TARGET}:${CPU_LEVEL}" in
   generic:1|generic_v2:2|generic_v3:3) ;;
   *) echo "CPU target and level do not match: ${CPU_TARGET}:${CPU_LEVEL}" >&2; exit 1 ;;
@@ -114,53 +117,59 @@ cfg() {
 }
 
 cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
-cfg --set-str SYSTEM_TRUSTED_KEYS ""
-cfg --set-str SYSTEM_REVOCATION_KEYS ""
-cfg -d DEBUG_INFO
-cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-cfg -d DEBUG_INFO_BTF
-cfg -e MODULES
-cfg -e MODULE_UNLOAD
-cfg -e KALLSYMS
-cfg -e KALLSYMS_ALL
-cfg -e IKCONFIG
-cfg -e IKCONFIG_PROC
-cfg -e GENERIC_CPU
-for cpu_opt in \
-  GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
-  MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
-  MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
-  MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
-  MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
-  cfg -d "${cpu_opt}"
-done
 case "${CPU_TARGET}" in
   generic) cfg --set-val X86_64_VERSION 1 ;;
   generic_v2) cfg --set-val X86_64_VERSION 2 ;;
   generic_v3) cfg --set-val X86_64_VERSION 3 ;;
 esac
 
-for enabled in \
-  HIGH_RES_TIMERS CPU_FREQ CPU_FREQ_GOV_SCHEDUTIL X86_AMD_PSTATE ACPI EFI \
-  EFI_STUB EFI_PARTITION BLK_DEV_INITRD BINFMT_ELF BINFMT_SCRIPT DEVTMPFS \
-  DEVTMPFS_MOUNT PRINTK EARLY_PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE \
-  SERIAL_8250_PCI SERIAL_EARLYCON SERIAL_CORE SERIAL_CORE_CONSOLE RD_GZIP \
-  RD_ZSTD RD_XZ TMPFS CGROUPS CGROUP_BPF PSI BPF BPF_SYSCALL BPF_JIT NET \
-  INET NETFILTER INPUT INPUT_EVDEV HID WLAN IWLWIFI_OPMODE_MODULAR DRM \
-  FB_EFI FRAMEBUFFER_CONSOLE ZSWAP; do
-  cfg -e "${enabled}"
-done
+if [ "${CONFIG_MODE}" = "server-kvm" ]; then
+  cfg --set-str SYSTEM_TRUSTED_KEYS ""
+  cfg --set-str SYSTEM_REVOCATION_KEYS ""
+  cfg -d DEBUG_INFO
+  cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+  cfg -d DEBUG_INFO_DWARF4
+  cfg -d DEBUG_INFO_DWARF5
+  cfg -d DEBUG_INFO_BTF
+  cfg -e DEBUG_INFO_NONE
+  cfg -e MODULES
+  cfg -e MODULE_UNLOAD
+  cfg -e KALLSYMS
+  cfg -e KALLSYMS_ALL
+  cfg -e IKCONFIG
+  cfg -e IKCONFIG_PROC
+  cfg -e GENERIC_CPU
+  for cpu_opt in \
+    GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
+    MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
+    MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
+    MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
+    MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
+    cfg -d "${cpu_opt}"
+  done
 
-for module in \
-  NF_TABLES BRIDGE VLAN_8021Q WIREGUARD HID_GENERIC HID_MULTITOUCH \
-  I2C_HID_ACPI USB_HID USB_XHCI_HCD USB_STORAGE UVC_VIDEO SND_HDA_INTEL \
-  SND_USB_AUDIO DRM_AMDGPU DRM_I915 DRM_NOUVEAU DRM_VIRTIO_GPU BT \
-  BT_HCIBTUSB CFG80211 MAC80211 IWLWIFI ATH10K ATH11K RTW88 RTW89 MT76 \
-  EXT4_FS BTRFS_FS XFS_FS F2FS_FS EXFAT_FS NTFS3_FS NFS_FS CIFS \
-  OVERLAY_FS SQUASHFS ZRAM KVM KVM_INTEL KVM_AMD VFIO VFIO_PCI VIRTIO \
-  VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE; do
-  cfg -m "${module}"
-done
+  for enabled in \
+    HIGH_RES_TIMERS CPU_FREQ CPU_FREQ_GOV_SCHEDUTIL X86_AMD_PSTATE ACPI EFI \
+    EFI_STUB EFI_PARTITION BLK_DEV_INITRD BINFMT_ELF BINFMT_SCRIPT DEVTMPFS \
+    DEVTMPFS_MOUNT PRINTK EARLY_PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE \
+    SERIAL_8250_PCI SERIAL_EARLYCON SERIAL_CORE SERIAL_CORE_CONSOLE RD_GZIP \
+    RD_ZSTD RD_XZ TMPFS CGROUPS CGROUP_BPF PSI BPF BPF_SYSCALL BPF_JIT NET \
+    INET NETFILTER INPUT INPUT_EVDEV HID WLAN IWLWIFI_OPMODE_MODULAR DRM \
+    FB_EFI FRAMEBUFFER_CONSOLE ZSWAP; do
+    cfg -e "${enabled}"
+  done
+
+  for module in \
+    NF_TABLES BRIDGE VLAN_8021Q WIREGUARD HID_GENERIC HID_MULTITOUCH \
+    I2C_HID_ACPI USB_HID USB_XHCI_HCD USB_STORAGE UVC_VIDEO SND_HDA_INTEL \
+    SND_USB_AUDIO DRM_AMDGPU DRM_I915 DRM_NOUVEAU DRM_VIRTIO_GPU BT \
+    BT_HCIBTUSB CFG80211 MAC80211 IWLWIFI ATH10K ATH11K RTW88 RTW89 MT76 \
+    EXT4_FS BTRFS_FS XFS_FS F2FS_FS EXFAT_FS NTFS3_FS NFS_FS CIFS \
+    OVERLAY_FS SQUASHFS ZRAM KVM KVM_INTEL KVM_AMD VFIO VFIO_PCI VIRTIO \
+    VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE; do
+    cfg -m "${module}"
+  done
+fi
 
 build_flags=()
 case "${USE_LLVM_LTO}" in
@@ -170,17 +179,21 @@ case "${USE_LLVM_LTO}" in
 esac
 
 make "${build_flags[@]}" olddefconfig
-for required_config in \
-  CONFIG_GENERIC_CPU=y \
-  CONFIG_X86_64_VERSION="${CPU_LEVEL}" \
-  CONFIG_BLK_DEV_INITRD=y \
-  CONFIG_BINFMT_ELF=y \
-  CONFIG_BINFMT_SCRIPT=y \
-  CONFIG_PRINTK=y \
-  CONFIG_SERIAL_8250=y \
-  CONFIG_SERIAL_8250_CONSOLE=y; do
+for required_config in CONFIG_X86_64_VERSION="${CPU_LEVEL}"; do
   grep -qx "${required_config}" .config
 done
+if [ "${CONFIG_MODE}" = "server-kvm" ]; then
+  for required_config in \
+    CONFIG_GENERIC_CPU=y \
+    CONFIG_BLK_DEV_INITRD=y \
+    CONFIG_BINFMT_ELF=y \
+    CONFIG_BINFMT_SCRIPT=y \
+    CONFIG_PRINTK=y \
+    CONFIG_SERIAL_8250=y \
+    CONFIG_SERIAL_8250_CONSOLE=y; do
+    grep -qx "${required_config}" .config
+  done
+fi
 grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
 case "${USE_LLVM_LTO}" in
   none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
@@ -193,9 +206,22 @@ export KBUILD_BUILD_USER="cnb-cloud-build"
 export KBUILD_BUILD_HOST="cnb.cool"
 export KDEB_PKGVERSION="${pkgver}-${GITHUB_RUN_NUMBER}"
 export KDEB_COMPRESS=xz
+echo "Building Debian packages with $(nproc) jobs"
 fakeroot make "${build_flags[@]}" -j"$(nproc)" bindeb-pkg
+echo "Package build finished; collecting .deb files"
 
-mv ../*.deb "${workspace}/artifacts/"
+for deb in ../*.deb; do
+  case "${deb}" in
+    *-dbg_*.deb|*-dbg-*.deb)
+      echo "Skipping debug-symbol package: ${deb}"
+      rm -f "${deb}"
+      ;;
+    *)
+      echo "Keeping package: ${deb}"
+      mv "${deb}" "${workspace}/artifacts/"
+      ;;
+  esac
+done
 cd "${workspace}"
 shopt -s nullglob
 debs=(artifacts/*.deb)
@@ -204,26 +230,73 @@ header_debs=(artifacts/linux-headers-*.deb)
 test "${#debs[@]}" -gt 0
 test "${#image_debs[@]}" -gt 0
 test "${#header_debs[@]}" -gt 0
+echo "Collected packages: ${#debs[@]}"
+
+heartbeat() {
+  local label="$1"
+  local seconds=0
+  while sleep 30; do
+    seconds=$((seconds + 30))
+    echo "Still working: ${label} (${seconds}s)"
+  done
+}
 
 for deb in "${debs[@]}"; do
+  echo "Validating package: ${deb}"
   dpkg-deb --info "${deb}"
+  echo "Listing package contents: ${deb}"
+  heartbeat "dpkg-deb --contents ${deb}" &
+  heartbeat_pid=$!
+  set +e
   dpkg-deb --contents "${deb}" > "${deb}.contents.txt"
-  lintian --fail-on error --suppress-tags unstripped-binary-or-object "${deb}"
+  contents_status=$?
+  set -e
+  kill "${heartbeat_pid}" 2>/dev/null || true
+  wait "${heartbeat_pid}" 2>/dev/null || true
+  test "${contents_status}" -eq 0
+  echo "Running lintian: ${deb}"
+  heartbeat "lintian ${deb}" &
+  heartbeat_pid=$!
+  set +e
+  timeout 8m lintian --fail-on error --suppress-tags unstripped-binary-or-object "${deb}"
+  lintian_status=$?
+  set -e
+  kill "${heartbeat_pid}" 2>/dev/null || true
+  wait "${heartbeat_pid}" 2>/dev/null || true
+  if [ "${lintian_status}" -eq 124 ]; then
+    echo "lintian timed out after 8 minutes for ${deb}" >&2
+    exit 1
+  fi
+  test "${lintian_status}" -eq 0
+  echo "Package validation finished: ${deb}"
 done
 
+echo "Extracting image package for content checks"
 mkdir package-check
+heartbeat "extract image package" &
+heartbeat_pid=$!
 dpkg-deb -x "${image_debs[0]}" package-check/image
+kill "${heartbeat_pid}" 2>/dev/null || true
+wait "${heartbeat_pid}" 2>/dev/null || true
+echo "Extracting headers package for content checks"
+heartbeat "extract headers package" &
+heartbeat_pid=$!
 dpkg-deb -x "${header_debs[0]}" package-check/headers
+kill "${heartbeat_pid}" 2>/dev/null || true
+wait "${heartbeat_pid}" 2>/dev/null || true
 test -n "$(find package-check/image/boot -maxdepth 1 -type f -name 'vmlinuz-*' -print -quit)"
 test -n "$(find package-check/image/lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)"
 test -n "$(find package-check/image/lib/modules -type f \( -name '*.ko' -o -name '*.ko.xz' -o -name '*.ko.zst' -o -name modules.builtin \) -print -quit)"
 test -n "$(find package-check/headers/usr/src -mindepth 1 -maxdepth 2 -type f -name Makefile -print -quit)"
+echo "Package content checks passed"
 
 if [ "${RUN_QEMU_SMOKE_TEST}" = "true" ]; then
+  echo "Preparing QEMU smoke test"
   rm -rf qemu-test
   mkdir -p qemu-test/root qemu-test/initramfs/{bin,dev,proc,sys}
   dpkg-deb -x "${image_debs[0]}" qemu-test/root
   kernel_image="$(find qemu-test/root/boot -maxdepth 1 -type f -name 'vmlinuz-*' | sort -V | tail -n1)"
+  echo "QEMU kernel image: ${kernel_image}"
   cp /bin/busybox qemu-test/initramfs/bin/busybox
   for applet in sh mount poweroff sleep; do
     ln -s busybox "qemu-test/initramfs/bin/${applet}"
@@ -243,6 +316,7 @@ EOF
   chmod +x qemu-test/initramfs/init
   (cd qemu-test/initramfs && find . -print0 | cpio --null -ov --format=newc) > qemu-test/initramfs.cpio
 
+  echo "Starting QEMU smoke test (max 180s)"
   set +e
   qemu-system-x86_64 \
     -machine pc,accel=tcg -cpu max -m 2048M -smp 2 \
@@ -251,12 +325,15 @@ EOF
     -display none -no-reboot -monitor none -serial file:qemu-test/serial.log &
   qemu_pid=$!
   boot_ok=0
-  for _ in $(seq 1 180); do
+  for second in $(seq 1 180); do
     if grep -q CACHYOS_QEMU_BOOT_OK qemu-test/serial.log 2>/dev/null; then
       boot_ok=1
       break
     fi
     kill -0 "${qemu_pid}" 2>/dev/null || break
+    if [ $((second % 30)) -eq 0 ]; then
+      echo "Waiting for QEMU boot marker (${second}s/180s)"
+    fi
     sleep 1
   done
   if [ "${boot_ok}" -eq 1 ] && kill -0 "${qemu_pid}" 2>/dev/null; then
@@ -267,6 +344,7 @@ EOF
   set -e
   cat qemu-test/serial.log
   test "${boot_ok}" -eq 1
+  echo "QEMU smoke test passed"
   if [ "${qemu_status}" -ne 0 ] && [ "${qemu_status}" -ne 143 ]; then
     echo "QEMU exited with status ${qemu_status} after the success marker."
   fi
@@ -279,6 +357,7 @@ fi
   echo "Variant: ${KERNEL_VARIANT}"
   echo "Source track: ${BUILD_TRACK}"
   echo "Profile: ${BUILD_PROFILE}"
+  echo "Configuration: Debian server/KVM baseline"
   echo "Scheduler: ${CPU_SCHEDULER}"
   echo "CachyOS config: ${CACHY_CONFIG}"
   echo "Timer frequency: ${HZ_TICKS} Hz"
@@ -302,8 +381,13 @@ fi
 
 if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
-  release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
-  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, x86-64-v${CPU_LEVEL}"
+  if [ "${BUILD_TRACK}" = "custom" ]; then
+    release_variant="${KERNEL_VARIANT#linux-cachyos-}"
+    release_tag="cachyos-debian-custom-${release_variant}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+  else
+    release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+  fi
+  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, Debian server/KVM, x86-64-v${CPU_LEVEL}"
   release_flags=(--repo "${GITHUB_REPOSITORY}" --title "${release_name}" --notes-file artifacts/BUILD-MANIFEST.txt)
   if [ "${BUILD_TRACK}" = "aggressive" ]; then
     release_flags+=(--prerelease)

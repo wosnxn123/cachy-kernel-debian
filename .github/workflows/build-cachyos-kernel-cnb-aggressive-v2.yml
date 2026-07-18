@@ -1,0 +1,86 @@
+name: Check and build aggressive x64v2 on CNB
+
+on:
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: cachyos-kernel-cnb-aggressive-v2
+  cancel-in-progress: false
+
+jobs:
+  check-upstream:
+    name: Check aggressive x64v2 release every 10 days
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - name: Enforce the ten-day check interval
+        id: cadence
+        env:
+          LAST_CHECK: ${{ vars.CNB_AGGRESSIVE_V2_LAST_CHECK }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] || [ -z "${LAST_CHECK}" ]; then
+            echo "due=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          last_epoch="$(date --date="${LAST_CHECK}" +%s)"
+          now_epoch="$(date -u +%s)"
+          if [ $((now_epoch - last_epoch)) -lt 864000 ]; then
+            echo "due=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "due=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Check the newest CachyOS RC version
+        id: check
+        if: ${{ steps.cadence.outputs.due == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git upstream
+          cd upstream/linux-cachyos-rc
+          export _processor_opt=generic_v2
+          export _build_zfs=no
+          export _build_nvidia_open=no
+          export _build_r8125=no
+          export _build_debug=no
+          export _localmodcfg=no
+          source PKGBUILD
+
+          release_tag="cachyos-debian-aggressive-${pkgver}-${pkgrel}-x64v2"
+          if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "build=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "build=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+          gh variable set CNB_AGGRESSIVE_V2_LAST_CHECK \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Skip until the next ten-day check
+        if: ${{ steps.cadence.outputs.due != 'true' }}
+        run: echo "Not due yet; no upstream clone or CNB build was started."
+
+  build-on-cnb:
+    needs: check-upstream
+    if: ${{ needs.check-upstream.outputs.build == 'true' }}
+    name: Build latest aggressive x64v2 on CNB
+    uses: ./.github/workflows/build-cachyos-kernel-cnb.yml
+    with:
+      kernel_variant: linux-cachyos-rc
+      cpu_target: generic_v2
+      cpu_scheduler: upstream-default
+      run_qemu_smoke_test: true
+      publish_release: true
+      mark_latest: false
+    secrets: inherit

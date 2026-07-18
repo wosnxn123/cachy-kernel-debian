@@ -3,26 +3,24 @@ name: Build CachyOS Kernel on CNB
 on:
   workflow_dispatch:
     inputs:
-      build_set:
-        description: "Kernel/CPU combinations to build on CNB"
+      kernel_variant:
+        description: "Official CachyOS packaging variant"
         required: true
-        default: "single"
+        default: "linux-cachyos-rc"
         type: choice
         options:
-          - single
-          - aggressive-all
-          - stable-all
-          - all-six
-      track:
-        description: "Track used when build_set is single"
-        required: true
-        default: "aggressive"
-        type: choice
-        options:
-          - aggressive
-          - stable
+          - linux-cachyos
+          - linux-cachyos-server
+          - linux-cachyos-rc
+          - linux-cachyos-lts
+          - linux-cachyos-eevdf
+          - linux-cachyos-bore
+          - linux-cachyos-bmq
+          - linux-cachyos-hardened
+          - linux-cachyos-rt-bore
+          - linux-cachyos-deckify
       cpu_target:
-        description: "CPU baseline used when build_set is single"
+        description: "Minimum x86-64 CPU baseline"
         required: true
         default: "generic_v2"
         type: choice
@@ -30,6 +28,20 @@ on:
           - generic
           - generic_v2
           - generic_v3
+      cpu_scheduler:
+        description: "Scheduler override; upstream-default uses the selected variant's default"
+        required: true
+        default: "upstream-default"
+        type: choice
+        options:
+          - upstream-default
+          - cachyos
+          - eevdf
+          - bore
+          - bmq
+          - hardened
+          - rt
+          - rt-bore
       run_qemu_smoke_test:
         description: "Boot the built kernel under QEMU before publishing"
         required: true
@@ -40,6 +52,37 @@ on:
         required: true
         default: true
         type: boolean
+      mark_latest:
+        description: "Mark the created/updated release as the latest release"
+        required: true
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      kernel_variant:
+        required: false
+        default: "linux-cachyos-rc"
+        type: string
+      cpu_target:
+        required: false
+        default: "generic_v2"
+        type: string
+      cpu_scheduler:
+        required: false
+        default: "upstream-default"
+        type: string
+      run_qemu_smoke_test:
+        required: false
+        default: true
+        type: boolean
+      publish_release:
+        required: false
+        default: true
+        type: boolean
+      mark_latest:
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -49,39 +92,51 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CNB_REPO: ${{ vars.CNB_REPO || 'Snowflake-2025/cachy-kernel-debian' }}
+  # Forks default to an identically named CNB repository under their own owner.
+  # Set the CNB_REPO Actions variable when the CNB namespace differs.
+  CNB_REPO: ${{ vars.CNB_REPO || format('{0}/cachy-kernel-debian', github.repository_owner) }}
 
 jobs:
-  prepare-matrix:
-    name: Select CNB build matrix
+  prepare-build:
+    name: Resolve CNB build
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
-      - name: Select requested combinations
+      - name: Resolve variant and CPU baseline
         id: select
         env:
-          BUILD_SET: ${{ inputs.build_set }}
-          SELECTED_TRACK: ${{ inputs.track }}
+          KERNEL_VARIANT: ${{ inputs.kernel_variant }}
           SELECTED_CPU_TARGET: ${{ inputs.cpu_target }}
+          SELECTED_CPU_SCHEDULER: ${{ inputs.cpu_scheduler }}
         run: |
           set -euo pipefail
-          all='{"include":[{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_target":"generic","cpu_level":1},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_target":"generic_v2","cpu_level":2},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_target":"generic_v3","cpu_level":3},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_target":"generic","cpu_level":1},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_target":"generic_v2","cpu_level":2},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_target":"generic_v3","cpu_level":3}]}'
-          case "${BUILD_SET}" in
-            single)
-              matrix="$(jq -c --arg track "${SELECTED_TRACK}" --arg cpu "${SELECTED_CPU_TARGET}" \
-                '{include: [.include[] | select(.track == $track and .cpu_target == $cpu)]}' <<<"${all}")"
+          case "${KERNEL_VARIANT}" in
+            linux-cachyos-rc) track=aggressive; profile=aggressive ;;
+            linux-cachyos-server) track=stable; profile=stable ;;
+            linux-cachyos|linux-cachyos-lts|linux-cachyos-eevdf|linux-cachyos-bore|linux-cachyos-bmq|linux-cachyos-hardened|linux-cachyos-rt-bore|linux-cachyos-deckify)
+              track=custom; profile=custom
               ;;
-            aggressive-all)
-              matrix="$(jq -c '{include: [.include[] | select(.track == "aggressive")]}' <<<"${all}")"
-              ;;
-            stable-all)
-              matrix="$(jq -c '{include: [.include[] | select(.track == "stable")]}' <<<"${all}")"
-              ;;
-            all-six) matrix="${all}" ;;
-            *) echo "Unknown build set: ${BUILD_SET}" >&2; exit 1 ;;
+            *) echo "Unsupported CachyOS variant: ${KERNEL_VARIANT}" >&2; exit 1 ;;
           esac
-          test "$(jq '.include | length' <<<"${matrix}")" -gt 0
+          case "${SELECTED_CPU_TARGET}" in
+            generic) cpu_level=1 ;;
+            generic_v2) cpu_level=2 ;;
+            generic_v3) cpu_level=3 ;;
+            *) echo "Unsupported CPU target: ${SELECTED_CPU_TARGET}" >&2; exit 1 ;;
+          esac
+          case "${SELECTED_CPU_SCHEDULER}" in
+            upstream-default|cachyos|eevdf|bore|bmq|hardened|rt|rt-bore) ;;
+            *) echo "Unsupported scheduler override: ${SELECTED_CPU_SCHEDULER}" >&2; exit 1 ;;
+          esac
+          matrix="$(jq -cn \
+            --arg track "${track}" \
+            --arg profile "${profile}" \
+            --arg variant "${KERNEL_VARIANT}" \
+            --arg cpu_target "${SELECTED_CPU_TARGET}" \
+            --arg scheduler "${SELECTED_CPU_SCHEDULER}" \
+            --argjson cpu_level "${cpu_level}" \
+            '{include: [{track: $track, profile: $profile, kernel_variant: $variant, cpu_target: $cpu_target, cpu_scheduler: $scheduler, cpu_level: $cpu_level}]}')"
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
 
   sync-cnb:
@@ -109,12 +164,12 @@ jobs:
           set -euo pipefail
           basic_auth="$(printf 'cnb:%s' "${CNB_TOKEN}" | base64 -w 0)"
           git -c "http.extraHeader=Authorization: Basic ${basic_auth}" \
-            push "https://cnb.cool/${CNB_REPO}" \
+            push --force "https://cnb.cool/${CNB_REPO}" \
             "${GITHUB_SHA}:refs/heads/main"
 
   dispatch:
     needs:
-      - prepare-matrix
+      - prepare-build
       - sync-cnb
     name: CNB ${{ matrix.track }} x64v${{ matrix.cpu_level }}
     runs-on: ubuntu-24.04
@@ -122,7 +177,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.prepare-build.outputs.matrix) }}
     steps:
       - name: Require CNB access token
         env:
@@ -140,7 +195,7 @@ jobs:
           GH_JOB_TOKEN: ${{ github.token }}
           RUN_QEMU_SMOKE_TEST: ${{ inputs.run_qemu_smoke_test }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
-          MARK_LATEST: ${{ matrix.track == 'stable' && matrix.cpu_level == 2 }}
+          MARK_LATEST: ${{ inputs.mark_latest }}
         run: |
           set -euo pipefail
           payload="$(jq -n \
@@ -151,6 +206,7 @@ jobs:
             --arg kernel_variant "${{ matrix.kernel_variant }}" \
             --arg cpu_target "${{ matrix.cpu_target }}" \
             --arg cpu_level "${{ matrix.cpu_level }}" \
+            --arg cpu_scheduler "${{ matrix.cpu_scheduler }}" \
             --arg profile "${{ matrix.profile }}" \
             --arg track "${{ matrix.track }}" \
             --arg qemu "${RUN_QEMU_SMOKE_TEST}" \
@@ -169,9 +225,10 @@ jobs:
               title: $title,
               env: {
                 KERNEL_VARIANT: $kernel_variant,
-                REQUESTED_CPU_SCHEDULER: "upstream-default",
+                REQUESTED_CPU_SCHEDULER: $cpu_scheduler,
                 CPU_TARGET: $cpu_target,
                 CPU_LEVEL: $cpu_level,
+                CONFIG_MODE: "server-kvm",
                 BUILD_PROFILE: $profile,
                 BUILD_TRACK: $track,
                 RUN_QEMU_SMOKE_TEST: $qemu,
