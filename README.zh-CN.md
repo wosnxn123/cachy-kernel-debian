@@ -12,8 +12,8 @@
 - 最新 RC 源码轨道：`linux-cachyos-rc`。
 - 每条内核线均构建 `x64v1`、`x64v2`、`x64v3`。
 
-两条源码轨道使用完全相同的激进服务器配置；区别只有上游源码轨道和
-内核版本，便于公平比较稳定源码与 RC 源码。
+两条源码轨道分别遵循 CachyOS 上游的服务器配置和 RC 配置。Release 与
+`BUILD-MANIFEST.txt` 会同时记录源码轨道和 profile。
 
 内核版本、`uname -r`、`.deb` 包名、Release 名称、Workflow Artifact 名称和 `BUILD-MANIFEST.txt` 都会标明 `x64v1`、`x64v2` 或 `x64v3`。
 
@@ -44,9 +44,10 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 - 生成每个 CPU 基线独立的 Release；
 - 上传带 `x64vN` 标识的 `.deb` 和 `BUILD-MANIFEST.txt`；
 - 使用 QEMU 做最小启动测试；
-- 两条源码轨道都使用 1000 Hz、full tickless、full preemption、THP always；
+- 稳定源码轨道使用 EEVDF、300 Hz、full tickless、lazy preemption、THP always；
+- RC 源码轨道使用 CachyOS 调度器、1000 Hz、full tickless、full preemption、THP always。
 
-稳定源码轨道和 RC 源码轨道使用相同的激进 profile：CachyOS 调度器、1000 Hz、full tickless、full preemption、THP always。稳定/RC 只表示源码来源，不表示不同的调参方案。
+稳定/RC 不只表示源码来源，也表示上游 profile 的区别。
 
 ## 手动构建
 

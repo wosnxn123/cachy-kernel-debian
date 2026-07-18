@@ -28,9 +28,9 @@ Each run builds six packages:
 - Stable source track: `linux-cachyos-server` with x86-64-v1/v2/v3.
 - Latest RC source track: `linux-cachyos-rc` with x86-64-v1/v2/v3.
 
-Both tracks use the same aggressive server configuration. Only the upstream
-source track and kernel version differ, so the two tracks can be compared more
-fairly.
+The stable track follows the upstream server profile, while the RC track follows
+the upstream CachyOS RC profile. The source track and tuning profile are both
+recorded in the Release and `BUILD-MANIFEST.txt`.
 
 The kernel localversion and package/release names contain `x64v1`, `x64v2`, or
 `x64v3`, so the required CPU baseline is visible in `uname -r`, package names,
@@ -110,9 +110,11 @@ Before installing a package, check the target machine's CPU flags with
 baseline. `x64v2` is not a CPU model name; it is a minimum instruction-set
 level, and `x64v3` is a stricter level intended for newer machines.
 
-The stable and RC tracks use the same aggressive profile: the CachyOS scheduler,
-1000 Hz, full tickless, full preemption, and THP always. The stable/RC label
-describes the source track, not a different tuning profile.
+The stable and RC tracks intentionally differ because they follow their
+respective upstream profiles. Stable uses EEVDF, 300 Hz, full tickless, lazy
+preemption, and THP always. The RC track uses the CachyOS scheduler, 1000 Hz,
+full tickless, full preemption, and THP always. The stable/RC label therefore
+describes both source track and tuning profile.
 
 ### `run_qemu_smoke_test`
 
@@ -153,16 +155,9 @@ release. The default is enabled.
 
 ## Server-Oriented Kernel Configuration
 
-The workflow starts from the matching CachyOS configuration and applies the
-same aggressive server profile to both source tracks:
-
-- CachyOS scheduler
-- 1000 Hz
-- full tickless
-- full preemption
-- THP always
-
-The profile also ensures common Debian server requirements, including:
+The workflow starts from the matching CachyOS configuration and preserves the
+upstream profile for each source track. It also ensures common Debian server
+requirements, including:
 
 - initramfs booting
 - loadable kernel modules

@@ -70,7 +70,21 @@ jobs:
           changed=false
           for variant in linux-cachyos-server linux-cachyos-rc; do
             cd "${GITHUB_WORKSPACE}/upstream/${variant}"
-            export _cpusched=cachyos
+            if [ "${variant}" = "linux-cachyos-server" ]; then
+              export _cpusched=eevdf
+              export _cachy_config=no
+              export _HZ_ticks=300
+              export _tickrate=full
+              export _preempt=lazy
+              export _hugepage=always
+            else
+              export _cpusched=cachyos
+              export _cachy_config=yes
+              export _HZ_ticks=1000
+              export _tickrate=full
+              export _preempt=full
+              export _hugepage=always
+            fi
             export _processor_opt=generic_v2
             export _use_llvm_lto=none
             export _use_gcc_suffix=no
@@ -79,11 +93,6 @@ jobs:
             export _build_r8125=no
             export _build_debug=no
             export _localmodcfg=no
-            export _cachy_config=yes
-            export _HZ_ticks=1000
-            export _tickrate=full
-            export _preempt=full
-            export _hugepage=always
             source PKGBUILD
 
             for cpu_level in 1 2 3; do
@@ -119,10 +128,10 @@ jobs:
     timeout-minutes: 720
     env:
       KERNEL_VARIANT: ${{ matrix.track == 'aggressive' && 'linux-cachyos-rc' || 'linux-cachyos-server' }}
-      CPU_SCHEDULER: cachyos
+      CPU_SCHEDULER: ${{ matrix.track == 'aggressive' && 'cachyos' || 'eevdf' }}
       CPU_TARGET: ${{ matrix.cpu_target }}
       CPU_LEVEL: ${{ matrix.cpu_level }}
-      BUILD_PROFILE: aggressive
+      BUILD_PROFILE: ${{ matrix.track }}
       BUILD_TRACK: ${{ matrix.track }}
 
     steps:
@@ -197,9 +206,9 @@ jobs:
           else
             export _cachy_config=no
             export _HZ_ticks=300
-            export _tickrate=idle
+            export _tickrate=full
             export _preempt=lazy
-            export _hugepage=madvise
+            export _hugepage=always
           fi
 
           source PKGBUILD
@@ -271,8 +280,9 @@ jobs:
           else
             cfg -e HZ_300 --set-val HZ 300
             cfg -d PREEMPT -e PREEMPT_LAZY
-            cfg -e NO_HZ_IDLE -d NO_HZ_FULL
-            cfg -d TRANSPARENT_HUGEPAGE_ALWAYS -e TRANSPARENT_HUGEPAGE_MADVISE
+            cfg -d NO_HZ_IDLE -d CONTEXT_TRACKING_FORCE
+            cfg -e NO_HZ_FULL_NODEF -e NO_HZ_FULL -e NO_HZ -e NO_HZ_COMMON -e CONTEXT_TRACKING
+            cfg -d TRANSPARENT_HUGEPAGE_MADVISE -e TRANSPARENT_HUGEPAGE_ALWAYS
           fi
           cfg -e HIGH_RES_TIMERS
           cfg -e CPU_FREQ
@@ -556,7 +566,7 @@ jobs:
 
           {
             echo "tag=${release_tag}"
-            echo "name=CachyOS Debian Kernel ${BUILD_TRACK} source, aggressive profile, x86-64-v${CPU_LEVEL}"
+            echo "name=CachyOS Debian Kernel ${BUILD_TRACK} source, ${BUILD_PROFILE} profile, x86-64-v${CPU_LEVEL}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifacts
