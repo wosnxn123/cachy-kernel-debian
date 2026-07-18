@@ -302,7 +302,12 @@ fi
 
 if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
-  release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+  if [ "${BUILD_TRACK}" = "custom" ]; then
+    release_variant="${KERNEL_VARIANT#linux-cachyos-}"
+    release_tag="cachyos-debian-custom-${release_variant}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+  else
+    release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+  fi
   release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, x86-64-v${CPU_LEVEL}"
   release_flags=(--repo "${GITHUB_REPOSITORY}" --title "${release_name}" --notes-file artifacts/BUILD-MANIFEST.txt)
   if [ "${BUILD_TRACK}" = "aggressive" ]; then

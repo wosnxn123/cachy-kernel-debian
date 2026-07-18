@@ -6,10 +6,9 @@
 
 中文文档：[README.zh-CN.md](README.zh-CN.md) | English
 
-This repository builds CachyOS Linux as installable Debian packages for
-64-bit Debian server workloads. It produces both the latest stable server
-kernel and the latest CachyOS release-candidate kernel for x86-64-v1, v2, and
-v3 CPU baselines.
+This repository builds selected CachyOS Linux variants as installable Debian
+packages for 64-bit Debian server workloads. Compilation runs on CNB Cloud
+Native Build rather than GitHub-hosted or Blacksmith runners.
 
 The target is a headless Debian/KVM server. The packages include initramfs,
 VirtIO, serial console, networking, storage, KVM, WireGuard, and common
@@ -27,10 +26,10 @@ the Debian/KVM requirements and visible CPU-baseline suffix are added afterward.
 Preparation uses the upstream release profile rather than its CI-only
 size-optimization fallback, so an upstream `cc_harder=yes` remains O3.
 
-Each run builds six packages:
-
-- Stable source track: `linux-cachyos-server` with x86-64-v1/v2/v3.
-- Latest RC source track: `linux-cachyos-rc` with x86-64-v1/v2/v3.
+Each manual run builds one selected combination. The UI includes the official
+default, server, RC, LTS, EEVDF, BORE, BMQ, hardened, RT-BORE, and Deckify
+variants, x86-64-v1/v2/v3 baselines, and an upstream-default or explicit
+scheduler choice.
 
 The stable track follows the upstream server profile, while the RC track follows
 the upstream CachyOS RC profile. Scheduler, CachyOS config, LTO/compiler mode,
@@ -51,56 +50,40 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-Automatic scheduled builds are disabled. Run builds manually from the GitHub
-Actions tab with the `workflow_dispatch` trigger; the standard workflow runs the
-six-build matrix. This keeps large kernel builds from consuming runner time
-without an explicit decision.
+The old GitHub/Blacksmith six-build workflows are removed. Manual builds run
+only through **Build CachyOS Kernel on CNB** and always build one selected
+combination.
 
-A separate **Build Custom CachyOS Kernel Debian Package** workflow builds one
-manually selected upstream variant, CPU baseline, and scheduler.
+**Check and build aggressive x64v2 on CNB** is the only automatic workflow. It
+checks the upstream RC package once every ten days and builds only when the
+latest `aggressive / generic_v2` version has no matching Release.
 
 ## Manual Usage
 
 1. Open the repository on GitHub.
 2. Go to **Actions**.
-3. Select **Build CachyOS Kernel Debian Packages**.
+3. Select **Build CachyOS Kernel on CNB**.
 4. Click **Run workflow**.
 5. Choose the desired inputs:
-   - `runner`: GitHub-hosted or Blacksmith runner size.
+   - `kernel_variant`: official CachyOS packaging variant.
+   - `cpu_target`: `generic`, `generic_v2`, or `generic_v3`.
+   - `cpu_scheduler`: `upstream-default` or an explicit scheduler override.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
    - `publish_release`: whether to upload the final packages to a GitHub
      Release.
    - `release_tag`: optional tag to create/update when publishing a Release.
    - `mark_latest`: whether the Release should be marked as the latest.
 6. Wait for the build to finish.
-7. Download the generated artifacts from the workflow run.
+7. Download the generated `.deb` files from the matching GitHub Release.
 
-Kernel builds are large and slow. A full run can take several hours and uses a
-significant amount of GitHub-hosted runner disk space.
-
-### Custom Manual Build
-
-Select **Build Custom CachyOS Kernel Debian Package** in the Actions tab when
-only one customized package is required. Its additional inputs are:
-
-- `kernel_variant`: any current official `CachyOS/linux-cachyos` packaging
-  variant, including the default, server, RC, LTS, EEVDF, BORE, BMQ, hardened,
-  RT-BORE, and Deckify variants.
-- `cpu_target`: `generic`, `generic_v2`, or `generic_v3`, recorded as `x64v1`,
-  `x64v2`, or `x64v3` in the resulting kernel and package metadata.
-- `cpu_scheduler`: `upstream-default` or an explicit CachyOS scheduler. The
-  upstream default is recommended because it preserves the selected variant's
-  intended combination. Explicit overrides are intended for advanced testing.
-
-The custom workflow runs the selected official `PKGBUILD` preparation logic,
-then uses the same Debian packaging, validation, artifact, Release, and optional
-QEMU test path as the standard workflow.
+Use `linux-cachyos-rc`, `generic_v2`, and `upstream-default` for the current
+headless Ivy Bridge-class KVM guest. `upstream-default` preserves the selected
+official variant's profile; scheduler overrides are for advanced testing.
 
 ## CNB Cloud Native Build
 
-The optional **Build CachyOS Kernel on CNB** workflow keeps GitHub Actions as
-the control plane while moving compilation to CNB Cloud Native Build. It is a
-separate path and does not replace the existing GitHub/Blacksmith workflows.
+**Build CachyOS Kernel on CNB** keeps GitHub Actions as the control plane while
+moving compilation to CNB Cloud Native Build.
 
 The bridge works as follows:
 
@@ -112,10 +95,8 @@ The bridge works as follows:
    matching GitHub Release.
 5. GitHub polls CNB's build-status API and links the CNB log in the job summary.
 
-CNB builds can run one selected combination, all aggressive baselines, all
-stable baselines, or all six combinations. GitHub limits dispatch to two CNB
-builds at a time. A six-build run still consumes substantial CNB core-hours;
-start with `single`, `aggressive`, and `generic_v2` when validating the setup.
+CNB builds exactly one selected combination per run. This avoids accidental
+parallel kernel compiles and keeps CNB core-hour use predictable.
 
 ### CNB Setup
 
@@ -139,6 +120,15 @@ cancelled, and no permanent GitHub credential is stored in CNB. The CNB path
 publishes GitHub Releases rather than GitHub Workflow Artifacts. CNB API details
 are documented in [StartBuild](https://api.cnb.cool/#/operations/StartBuild)
 and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
+
+### Ten-day aggressive x64v2 check
+
+The scheduled workflow is tailored to this repository's target server:
+`linux-cachyos-rc`, `generic_v2` (`x64v2`), and `upstream-default`. GitHub starts
+a lightweight daily timer only to compare `CNB_AGGRESSIVE_V2_LAST_CHECK`; it
+does not clone upstream or start CNB until ten full days have elapsed. At that
+point it checks the current RC `pkgver/pkgrel`, records the timestamp in that
+Actions variable, and starts CNB only when the corresponding Release is absent.
 
 ## Available Build Inputs
 
@@ -311,11 +301,9 @@ bootloader if the custom kernel does not work on your hardware.
 .cnb/Dockerfile
 .cnb/build-kernel.sh
 .github/workflows/build-cachyos-kernel-cnb.yml
-.github/workflows/build-cachyos-kernel.yml
-.github/workflows/build-cachyos-kernel-custom.yml
+.github/workflows/build-cachyos-kernel-cnb-aggressive-v2.yml
 README.md
 ```
 
-Both build paths fetch CachyOS kernel sources at build time. The CNB path mirrors
-the controlling GitHub commit before dispatch so CNB executes the same checked-in
-configuration.
+The CNB path mirrors the controlling GitHub commit before dispatch so CNB
+executes the same checked-in configuration.
