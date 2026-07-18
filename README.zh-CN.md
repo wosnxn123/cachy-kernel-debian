@@ -19,10 +19,16 @@
 | 标识 | 配置 | 说明 |
 | --- | --- | --- |
 | `x64v1` | `generic` | 兼容性最广 |
-| `x64v2` | `generic_v2` | 当前 E5-2696 v2 虚拟机支持 |
-| `x64v3` | `generic_v3` | 需要 AVX2、BMI1/2、FMA 等指令 |
+| `x64v2` | `generic_v2` | 需要 x86-64-v2 指令集：SSSE3、SSE4.1、SSE4.2、POPCNT、CX16、LAHF/SAHF |
+| `x64v3` | `generic_v3` | 需要 x86-64-v3 指令集：AVX2、BMI1/2、FMA、MOVBE、F16C 等 |
 
-当前 E5-2696 v2 支持 x86-64-v2，不支持 x86-64-v3。不要在这台虚拟机上启动 `x64v3` 内核；v3 包用于更新的宿主机。
+`x64v2` 和 `x64v3` 不是 CPU 型号，而是最低指令集等级。安装前应在目标机器执行 `lscpu` 检查 CPU flags；缺少对应指令集的机器不能启动该等级的内核。
+
+例如：
+
+```bash
+lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
+```
 
 工作流不会使用 `native`。GitHub runner 上的 `native` 会针对 runner CPU 编译，而不是针对你的服务器 CPU。需要 Ivy Bridge 原生优化时，必须在目标 VM 或同型号 CPU 的机器上本地编译。
 

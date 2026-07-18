@@ -93,11 +93,18 @@ the `ubuntu-24.04` fallback runner.
 Every run builds these CPU baselines:
 
 - `x64v1` / `generic`: broadest compatibility.
-- `x64v2` / `generic_v2`: supported by the current E5-2696 v2 VM.
-- `x64v3` / `generic_v3`: requires AVX2, BMI1/2, FMA, and related features.
+- `x64v2` / `generic_v2`: requires the x86-64-v2 feature set, including
+  SSSE3, SSE4.1, SSE4.2, POPCNT, CX16, and LAHF/SAHF.
+- `x64v3` / `generic_v3`: requires x86-64-v3 features such as AVX2, BMI1/2,
+  FMA, MOVBE, and F16C.
 
 The workflow deliberately does not use `native`: a GitHub-hosted build would
 optimize for the runner CPU, not the server where the kernel will run.
+
+Before installing a package, check the target machine's CPU flags with
+`lscpu`. A machine that lacks the required feature set must not boot that
+baseline. `x64v2` is not a CPU model name; it is a minimum instruction-set
+level, and `x64v3` is a stricter level intended for newer machines.
 
 The stable and aggressive tracks intentionally use different profiles. Stable
 uses the upstream server configuration with EEVDF, 300 Hz, idle tickless, lazy
