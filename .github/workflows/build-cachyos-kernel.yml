@@ -385,6 +385,7 @@ jobs:
           scripts/config --state MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD || true
           for required_config in \
             CONFIG_GENERIC_CPU=y \
+            CONFIG_X86_64_VERSION=${CPU_LEVEL} \
             CONFIG_BLK_DEV_INITRD=y \
             CONFIG_BINFMT_ELF=y \
             CONFIG_BINFMT_SCRIPT=y \
