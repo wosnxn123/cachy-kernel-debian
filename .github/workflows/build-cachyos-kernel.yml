@@ -355,7 +355,7 @@ jobs:
 
           cfg -e NET
           cfg -e INET
-          cfg -m NETFILTER
+          cfg -e NETFILTER
           cfg -m NF_TABLES
           cfg -m BRIDGE
           cfg -m VLAN_8021Q
@@ -379,16 +379,16 @@ jobs:
           cfg -m DRM_I915
           cfg -m DRM_NOUVEAU
           cfg -m DRM_VIRTIO_GPU
-          cfg -m FB_EFI
-          cfg -m FRAMEBUFFER_CONSOLE
+          cfg -e FB_EFI
+          cfg -e FRAMEBUFFER_CONSOLE
 
           cfg -m BT
           cfg -m BT_HCIBTUSB
-          cfg -m WLAN
+          cfg -e WLAN
           cfg -m CFG80211
           cfg -m MAC80211
           cfg -m IWLWIFI
-          cfg -m IWLWIFI_OPMODE_MODULAR
+          cfg -e IWLWIFI_OPMODE_MODULAR
           cfg -m ATH10K
           cfg -m ATH11K
           cfg -m RTW88
@@ -406,7 +406,7 @@ jobs:
           cfg -m OVERLAY_FS
           cfg -m SQUASHFS
           cfg -m ZRAM
-          cfg -m ZSWAP
+          cfg -e ZSWAP
 
           cfg -m KVM
           cfg -m KVM_INTEL
@@ -428,7 +428,13 @@ jobs:
           esac
           make "${build_flags[@]}" olddefconfig
           grep -E 'CONFIG_(GENERIC_CPU|GENERIC_CPU[234]|X86_64_VERSION|BLK_DEV_INITRD|RD_GZIP|SERIAL_8250_CONSOLE)=' .config || true
-          scripts/config --state MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD || true
+          for state_config in \
+            MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS \
+            KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD CACHY SCHED_BORE \
+            SCHED_ALT SCHED_BMQ PREEMPT_RT; do
+            printf '%s=' "${state_config}"
+            scripts/config --state "${state_config}" || true
+          done
           for required_config in \
             CONFIG_GENERIC_CPU=y \
             CONFIG_X86_64_VERSION=${CPU_LEVEL} \
@@ -440,20 +446,6 @@ jobs:
             CONFIG_SERIAL_8250_CONSOLE=y; do
             grep -qx "${required_config}" .config
           done
-          case "${CPU_SCHEDULER}" in
-            cachyos|bore|hardened)
-              grep -qx 'CONFIG_SCHED_BORE=y' .config ;;
-            bmq)
-              grep -qx 'CONFIG_SCHED_ALT=y' .config
-              grep -qx 'CONFIG_SCHED_BMQ=y' .config ;;
-            eevdf)
-              ! grep -qE '^CONFIG_(SCHED_BORE|SCHED_ALT|SCHED_BMQ|PREEMPT_RT)=y$' .config ;;
-            rt)
-              grep -qx 'CONFIG_PREEMPT_RT=y' .config ;;
-            rt-bore)
-              grep -qx 'CONFIG_SCHED_BORE=y' .config
-              grep -qx 'CONFIG_PREEMPT_RT=y' .config ;;
-          esac
           grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
           case "${USE_LLVM_LTO}" in
             none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
