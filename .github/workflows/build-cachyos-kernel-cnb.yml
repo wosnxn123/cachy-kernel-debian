@@ -49,7 +49,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CNB_REPO: ${{ vars.CNB_REPO || 'Snowflake-2025/cachy-kernel-debian' }}
+  # Forks default to an identically named CNB repository under their own owner.
+  # Set the CNB_REPO Actions variable when the CNB namespace differs.
+  CNB_REPO: ${{ vars.CNB_REPO || format('{0}/cachy-kernel-debian', github.repository_owner) }}
 
 jobs:
   prepare-matrix:

@@ -51,18 +51,13 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-The workflow supports both manual and scheduled runs. A scheduled run checks
-both upstream `PKGBUILD` files once per day at 06:00 Beijing time and starts the
-six-build matrix only when a new upstream `pkgver/pkgrel` has not already been
-published by this repository. Scheduled builds publish versioned Releases
-automatically.
-
-Manual runs are started from the GitHub Actions tab with the `workflow_dispatch`
-trigger and run the same six-build matrix.
+Automatic scheduled builds are disabled. Run builds manually from the GitHub
+Actions tab with the `workflow_dispatch` trigger; the standard workflow runs the
+six-build matrix. This keeps large kernel builds from consuming runner time
+without an explicit decision.
 
 A separate **Build Custom CachyOS Kernel Debian Package** workflow builds one
-manually selected upstream variant, CPU baseline, and scheduler. It does not
-change or replace the scheduled stable/RC matrix.
+manually selected upstream variant, CPU baseline, and scheduler.
 
 ## Manual Usage
 
@@ -99,7 +94,7 @@ only one customized package is required. Its additional inputs are:
 
 The custom workflow runs the selected official `PKGBUILD` preparation logic,
 then uses the same Debian packaging, validation, artifact, Release, and optional
-QEMU test path as the scheduled workflow.
+QEMU test path as the standard workflow.
 
 ## CNB Cloud Native Build
 
@@ -124,18 +119,23 @@ start with `single`, `aggressive`, and `generic_v2` when validating the setup.
 
 ### CNB Setup
 
-1. Create an empty CNB repository. The default expected path is
-   `Snowflake-2025/cachy-kernel-debian`.
+1. Create an empty CNB repository. By default, a fork uses
+   `<your-GitHub-owner>/cachy-kernel-debian`; create the CNB repository at that
+   path, or choose any other CNB `organization/repository` path.
 2. Create a CNB access token that can write repository code and has
    `repo-cnb-trigger:rw` permission.
-3. Add that token to the GitHub repository as the Actions secret `CNB_TOKEN`.
-4. If a different CNB path is used, create the GitHub Actions variable
-   `CNB_REPO` with the value `organization/repository`.
+3. In the GitHub fork, open **Settings -> Secrets and variables -> Actions**.
+   Create a repository secret named `CNB_TOKEN` and paste the CNB token as its
+   value.
+4. If the CNB path differs from the default, create an Actions repository
+   variable named `CNB_REPO` with the value `organization/repository`.
 5. Run **Build CachyOS Kernel on CNB** from the GitHub Actions tab.
 
-The GitHub job token is passed only to the triggered CNB build so it can create
-the Release. It remains valid while the GitHub dispatcher waits and expires
-after that job; no permanent GitHub credential is stored in CNB. The CNB path
+CNB does not receive permission to push Git commits. GitHub syncs the workflow
+commit to CNB using `CNB_TOKEN`; CNB receives only the current GitHub job token
+with `contents: write` permission so it can create a Release and upload `.deb`
+assets. That temporary token expires when the dispatcher job ends or is
+cancelled, and no permanent GitHub credential is stored in CNB. The CNB path
 publishes GitHub Releases rather than GitHub Workflow Artifacts. CNB API details
 are documented in [StartBuild](https://api.cnb.cool/#/operations/StartBuild)
 and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
