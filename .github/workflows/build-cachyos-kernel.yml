@@ -13,35 +13,6 @@ on:
           - blacksmith-16vcpu-ubuntu-2404
           - blacksmith-32vcpu-ubuntu-2404
           - ubuntu-24.04
-      kernel_variant:
-        description: "CachyOS kernel variant from the linux-cachyos repository"
-        required: true
-        default: "linux-cachyos"
-        type: choice
-        options:
-          - linux-cachyos
-          - linux-cachyos-server
-          - linux-cachyos-rc
-          - linux-cachyos-bore
-          - linux-cachyos-eevdf
-          - linux-cachyos-lts
-      cpu_target:
-        description: "Minimum x86-64 CPU baseline for the kernel"
-        required: true
-        default: "generic_v2"
-        type: choice
-        options:
-          - generic_v2
-          - generic
-      cpu_scheduler:
-        description: "CachyOS scheduler/config flavor"
-        required: true
-        default: "cachyos"
-        type: choice
-        options:
-          - cachyos
-          - bore
-          - eevdf
       run_qemu_smoke_test:
         description: "Boot the built kernel with a tiny initramfs under QEMU"
         required: true
@@ -63,7 +34,7 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "0 22 * * *"
 
 permissions:
   contents: write
@@ -74,14 +45,11 @@ concurrency:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  KERNEL_VARIANT: ${{ inputs.kernel_variant || (github.event_name == 'schedule' && 'linux-cachyos-server') || 'linux-cachyos' }}
-  CPU_SCHEDULER: ${{ inputs.cpu_scheduler || (github.event_name == 'schedule' && 'eevdf') || 'cachyos' }}
-  CPU_TARGET: ${{ inputs.cpu_target || 'generic_v2' }}
   RUN_QEMU_SMOKE_TEST: ${{ inputs.run_qemu_smoke_test || github.event_name == 'schedule' || false }}
 
 jobs:
   check-upstream:
-    name: Check for a new CachyOS kernel
+    name: Check stable and RC CachyOS versions
     runs-on: ubuntu-24.04
     outputs:
       changed: ${{ steps.check.outputs.changed }}
@@ -99,38 +67,66 @@ jobs:
           fi
 
           git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git upstream
-          cd "upstream/${KERNEL_VARIANT}"
-          export _cpusched="${CPU_SCHEDULER}"
-          export _processor_opt="${CPU_TARGET}"
-          export _use_llvm_lto=none
-          export _use_gcc_suffix=no
-          export _build_zfs=no
-          export _build_nvidia_open=no
-          export _build_r8125=no
-          export _build_debug=no
-          export _localmodcfg=no
-          export _cachy_config=no
-          export _HZ_ticks=300
-          export _tickrate=idle
-          export _preempt=lazy
-          export _hugepage=madvise
-          source PKGBUILD
+          changed=false
+          for variant in linux-cachyos-server linux-cachyos-rc; do
+            cd "${GITHUB_WORKSPACE}/upstream/${variant}"
+            if [ "${variant}" = "linux-cachyos-server" ]; then
+              export _cpusched=eevdf
+            else
+              export _cpusched=cachyos
+            fi
+            export _processor_opt=generic_v2
+            export _use_llvm_lto=none
+            export _use_gcc_suffix=no
+            export _build_zfs=no
+            export _build_nvidia_open=no
+            export _build_r8125=no
+            export _build_debug=no
+            export _localmodcfg=no
+            export _cachy_config=no
+            export _HZ_ticks=300
+            export _tickrate=idle
+            export _preempt=lazy
+            export _hugepage=madvise
+            source PKGBUILD
 
-          release_tag="cachyos-debian-${KERNEL_VARIANT}-${pkgver}-${pkgrel}"
-          if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "${release_tag} already exists; skipping duplicate build."
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
-          else
-            echo "${release_tag} is new; building it."
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-          fi
+            for cpu_level in 1 2 3; do
+              release_tag="cachyos-debian-$([ "${variant}" = "linux-cachyos-rc" ] && echo aggressive || echo stable)-${pkgver}-${pkgrel}-x64v${cpu_level}"
+              if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+                echo "${release_tag} already exists."
+              else
+                echo "${release_tag} is new."
+                changed=true
+              fi
+            done
+            unset pkgbase pkgver pkgrel _srcname _major _minor _tagrel _cpusched
+          done
+          echo "changed=${changed}" >> "${GITHUB_OUTPUT}"
 
   build:
     needs: check-upstream
     if: ${{ needs.check-upstream.outputs.changed == 'true' }}
-    name: Build, package, and test
+    name: Build, package, and test (${{ matrix.track }} x64v${{ matrix.cpu_level }})
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [stable, aggressive]
+        cpu_target: [generic, generic_v2, generic_v3]
+        include:
+          - cpu_target: generic
+            cpu_level: 1
+          - cpu_target: generic_v2
+            cpu_level: 2
+          - cpu_target: generic_v3
+            cpu_level: 3
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 720
+    env:
+      KERNEL_VARIANT: ${{ matrix.track == 'aggressive' && 'linux-cachyos-rc' || 'linux-cachyos-server' }}
+      CPU_SCHEDULER: ${{ matrix.track == 'aggressive' && 'cachyos' || 'eevdf' }}
+      CPU_TARGET: ${{ matrix.cpu_target }}
+      CPU_LEVEL: ${{ matrix.cpu_level }}
+      BUILD_PROFILE: ${{ matrix.track }}
 
     steps:
       - name: Check out workflow repository
@@ -195,11 +191,19 @@ jobs:
           export _build_r8125=no
           export _build_debug=no
           export _localmodcfg=no
-          export _cachy_config=no
-          export _HZ_ticks=300
-          export _tickrate=idle
-          export _preempt=lazy
-          export _hugepage=madvise
+          if [ "${BUILD_PROFILE}" = "aggressive" ]; then
+            export _cachy_config=yes
+            export _HZ_ticks=1000
+            export _tickrate=full
+            export _preempt=full
+            export _hugepage=always
+          else
+            export _cachy_config=no
+            export _HZ_ticks=300
+            export _tickrate=idle
+            export _preempt=lazy
+            export _hugepage=madvise
+          fi
 
           source PKGBUILD
 
@@ -219,7 +223,7 @@ jobs:
           cp "linux-cachyos-packaging/${KERNEL_VARIANT}/config" "${_srcname}/.config"
           echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}" >> "${GITHUB_OUTPUT}"
 
-      - name: Configure kernel for a Debian server build
+      - name: Configure kernel profile and CPU baseline
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
         run: |
           set -euxo pipefail
@@ -228,7 +232,7 @@ jobs:
             scripts/config "$@" || true
           }
 
-          cfg --set-str LOCALVERSION "-cachyos-server-debian"
+          cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
           cfg --set-str SYSTEM_TRUSTED_KEYS ""
           cfg --set-str SYSTEM_REVOCATION_KEYS ""
           cfg -d DEBUG_INFO
@@ -240,7 +244,11 @@ jobs:
           cfg -e KALLSYMS_ALL
           cfg -e IKCONFIG
           cfg -e IKCONFIG_PROC
-          cfg -d CACHY
+          if [ "${BUILD_PROFILE}" = "aggressive" ]; then
+            cfg -e CACHY
+          else
+            cfg -d CACHY
+          fi
           cfg -e GENERIC_CPU
           for cpu_opt in \
             GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
@@ -250,19 +258,25 @@ jobs:
             MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
             cfg -d "${cpu_opt}"
           done
-          if [ "${CPU_TARGET}" = "generic_v2" ]; then
-            cfg --set-val X86_64_VERSION 2
-          else
-            cfg --set-val X86_64_VERSION 1
-          fi
-          cfg -e HZ_300 --set-val HZ 300
+          case "${CPU_TARGET}" in
+            generic) cfg --set-val X86_64_VERSION 1 ;;
+            generic_v2) cfg --set-val X86_64_VERSION 2 ;;
+            generic_v3) cfg --set-val X86_64_VERSION 3 ;;
+            *) echo "Unsupported CPU target: ${CPU_TARGET}" >&2; exit 1 ;;
+          esac
           cfg -e PREEMPT_DYNAMIC
-          cfg -d PREEMPT
-          cfg -e PREEMPT_LAZY
-          cfg -e NO_HZ_IDLE
-          cfg -d NO_HZ_FULL
-          cfg -d TRANSPARENT_HUGEPAGE_ALWAYS
-          cfg -e TRANSPARENT_HUGEPAGE_MADVISE
+          if [ "${BUILD_PROFILE}" = "aggressive" ]; then
+            cfg -e HZ_1000 --set-val HZ 1000
+            cfg -e PREEMPT -d PREEMPT_LAZY
+            cfg -d NO_HZ_IDLE -d CONTEXT_TRACKING_FORCE
+            cfg -e NO_HZ_FULL_NODEF -e NO_HZ_FULL -e NO_HZ -e NO_HZ_COMMON -e CONTEXT_TRACKING
+            cfg -d TRANSPARENT_HUGEPAGE_MADVISE -e TRANSPARENT_HUGEPAGE_ALWAYS
+          else
+            cfg -e HZ_300 --set-val HZ 300
+            cfg -d PREEMPT -e PREEMPT_LAZY
+            cfg -e NO_HZ_IDLE -d NO_HZ_FULL
+            cfg -d TRANSPARENT_HUGEPAGE_ALWAYS -e TRANSPARENT_HUGEPAGE_MADVISE
+          fi
           cfg -e HIGH_RES_TIMERS
           cfg -e CPU_FREQ
           cfg -e CPU_FREQ_GOV_SCHEDUTIL
@@ -503,10 +517,13 @@ jobs:
           {
             echo "CachyOS source: ${{ steps.cachyos.outputs.source_url }}"
             echo "Source name: ${{ steps.cachyos.outputs.srcname }}"
-            echo "Version: ${{ steps.cachyos.outputs.pkgver }}-${{ github.run_number }}"
+            echo "Version: ${{ steps.cachyos.outputs.pkgver }}-${{ steps.cachyos.outputs.pkgrel }}"
             echo "Variant: ${KERNEL_VARIANT}"
+            echo "Profile: ${BUILD_PROFILE}"
             echo "Scheduler: ${CPU_SCHEDULER}"
             echo "CPU target: ${CPU_TARGET}"
+            echo "CPU baseline: x86-64-v${CPU_LEVEL}"
+            echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
             echo "Built at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo
             sha256sum artifacts/*.deb
@@ -530,21 +547,23 @@ jobs:
 
           if [ -z "${release_tag}" ]; then
             if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-              release_tag="cachyos-debian-${KERNEL_VARIANT}-${PKGVER}-${PKGREL}"
+              release_tag="cachyos-debian-${BUILD_PROFILE}-${PKGVER}-${PKGREL}-x64v${CPU_LEVEL}"
             else
-              release_tag="cachyos-debian-${KERNEL_VARIANT}-${PKGVER}-${RUN_NUMBER}"
+              release_tag="cachyos-debian-${BUILD_PROFILE}-${PKGVER}-${RUN_NUMBER}-x64v${CPU_LEVEL}"
             fi
+          else
+            release_tag="${release_tag}-x64v${CPU_LEVEL}"
           fi
 
           {
             echo "tag=${release_tag}"
-            echo "name=CachyOS Debian Kernel ${release_tag}"
+            echo "name=CachyOS Debian Kernel ${BUILD_PROFILE} x86-64-v${CPU_LEVEL} ${release_tag}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cachyos-debian-kernel-${{ steps.cachyos.outputs.pkgver }}-${{ github.run_number }}
+          name: cachyos-debian-${{ matrix.track }}-x64v${{ matrix.cpu_level }}-${{ steps.cachyos.outputs.pkgver }}-${{ github.run_number }}
           path: |
             artifacts/*.deb
             artifacts/*.txt
@@ -564,4 +583,4 @@ jobs:
             artifacts/BUILD-MANIFEST.txt
           fail_on_unmatched_files: true
           generate_release_notes: true
-          make_latest: ${{ github.event_name == 'schedule' && 'true' || (inputs.mark_latest && 'true' || 'false') }}
+          make_latest: ${{ matrix.track == 'stable' && matrix.cpu_level == 2 && (github.event_name == 'schedule' || inputs.mark_latest) && 'true' || 'false' }}

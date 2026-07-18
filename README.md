@@ -4,20 +4,33 @@
 
 # CachyOS Kernel Debian Builder
 
-This repository contains a GitHub Actions workflow for building the latest
-CachyOS Linux kernel as installable Debian packages.
+中文文档：[README.zh-CN.md](README.zh-CN.md) | English
 
-The workflow is intended for Debian-based desktop systems where you want to test
-or run a CachyOS-flavored kernel without manually maintaining the full build
-toolchain on your machine.
+This repository builds CachyOS Linux as installable Debian packages for
+64-bit Debian server workloads. It produces both the latest stable server
+kernel and the latest CachyOS release-candidate kernel for x86-64-v1, v2, and
+v3 CPU baselines.
+
+The target is a headless Debian/KVM server. The packages include initramfs,
+VirtIO, serial console, networking, storage, KVM, WireGuard, and common
+filesystems; a VirtIO-GPU device is not required.
 
 ## What It Builds
 
 The workflow fetches the newest kernel metadata from the official
 [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) packaging
 repository, downloads the matching CachyOS kernel source tarball, applies a
-Debian-oriented desktop configuration pass, compiles the kernel, and packages the
+server-oriented configuration pass, compiles the kernel, and packages the
 result with the kernel's upstream Debian packaging target.
+
+Each run builds six packages:
+
+- Stable `linux-cachyos-server` with x86-64-v1/v2/v3.
+- Latest `linux-cachyos-rc` with the CachyOS scheduler and x86-64-v1/v2/v3.
+
+The kernel localversion and package/release names contain `x64v1`, `x64v2`, or
+`x64v3`, so the required CPU baseline is visible in `uname -r`, package names,
+Release names, artifacts, and `BUILD-MANIFEST.txt`.
 
 Expected output includes standard `.deb` packages such as:
 
@@ -28,15 +41,14 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-The workflow supports both manual and scheduled runs. A scheduled run checks the
-upstream CachyOS server `PKGBUILD` once per day and starts a build only when its
-`pkgver/pkgrel` has not already been published by this repository. Scheduled
-builds use the stable `linux-cachyos-server` variant and publish a versioned
-Release automatically.
+The workflow supports both manual and scheduled runs. A scheduled run checks
+both upstream `PKGBUILD` files once per day at 06:00 Beijing time and starts the
+six-build matrix only when a new upstream `pkgver/pkgrel` has not already been
+published by this repository. Scheduled builds publish versioned Releases
+automatically.
 
 Manual runs are started from the GitHub Actions tab with the `workflow_dispatch`
-trigger. They can select the stable server variant or the latest CachyOS RC
-variant for testing.
+trigger and run the same six-build matrix.
 
 ## Manual Usage
 
@@ -46,9 +58,6 @@ variant for testing.
 4. Click **Run workflow**.
 5. Choose the desired inputs:
    - `runner`: GitHub-hosted or Blacksmith runner size.
-   - `kernel_variant`: CachyOS package variant to build.
-   - `cpu_target`: minimum CPU baseline, `generic_v2` by default.
-   - `cpu_scheduler`: scheduler/config flavor.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
    - `publish_release`: whether to upload the final packages to a GitHub
      Release.
@@ -79,37 +88,15 @@ Blacksmith runners require the Blacksmith GitHub integration to be installed and
 enabled for the repository's organization. If Blacksmith is not configured, use
 the `ubuntu-24.04` fallback runner.
 
-### `kernel_variant`
+### Build Matrix
 
-Supported values:
+Every run builds these CPU baselines:
 
-- `linux-cachyos`
-- `linux-cachyos-server`
-- `linux-cachyos-rc`
-- `linux-cachyos-bore`
-- `linux-cachyos-eevdf`
-- `linux-cachyos-lts`
+- `x64v1` / `generic`: broadest compatibility.
+- `x64v2` / `generic_v2`: recommended for the current E5-2696 v2 VM.
+- `x64v3` / `generic_v3`: requires AVX2, BMI1/2, FMA, and related features.
 
-The default is `linux-cachyos`.
-
-### `cpu_scheduler`
-
-Supported values:
-
-- `cachyos`
-- `bore`
-- `eevdf`
-
-The default is `cachyos`.
-
-### `cpu_target`
-
-Supported values:
-
-- `generic_v2`: x86-64-v2 baseline, suitable for the target VM.
-- `generic`: older x86-64 baseline with broader compatibility.
-
-The workflow deliberately does not expose `native`: a GitHub-hosted build would
+The workflow deliberately does not use `native`: a GitHub-hosted build would
 optimize for the runner CPU, not the server where the kernel will run.
 
 ### `run_qemu_smoke_test`
@@ -138,7 +125,7 @@ Optional release tag to create or update when `publish_release` is enabled.
 If left blank, the workflow generates a tag like:
 
 ```text
-cachyos-debian-linux-cachyos-7.0.12-5
+cachyos-debian-stable-7.1.3-2-x64v2
 ```
 
 If the workflow is manually run from an existing tag ref, that tag is used unless
@@ -149,11 +136,16 @@ If the workflow is manually run from an existing tag ref, that tag is used unles
 Controls whether the created or updated GitHub Release is marked as the latest
 release. The default is enabled.
 
-## Desktop-Oriented Kernel Configuration
+## Server-Oriented Kernel Configuration
 
-The workflow starts from the CachyOS kernel configuration and then ensures common
-Debian desktop requirements are available. The configuration pass includes
-support for:
+The workflow starts from the matching CachyOS configuration and applies separate
+profiles:
+
+- Stable: EEVDF, 300 Hz, idle tickless, lazy preemption, and THP madvise.
+- Aggressive RC: CachyOS scheduler, 1000 Hz, full tickless, full preemption,
+  and THP always.
+
+Both profiles ensure common Debian server requirements, including:
 
 - initramfs booting
 - loadable kernel modules
@@ -168,8 +160,9 @@ support for:
 - KVM, VirtIO, and VFIO modules
 - WireGuard and common networking features
 
-The build uses a generic x86-64 target so the resulting packages are more
-portable across Debian-based machines and can boot under QEMU's emulated CPU.
+The build uses explicit x86-64-v1/v2/v3 targets. This repository is intended
+for Debian 13/KVM server testing; select v1 or v2 on the current E5-2696 v2
+guest, while v3 packages require a newer host with AVX2/BMI/FMA support.
 
 ## Validation
 
