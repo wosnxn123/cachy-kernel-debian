@@ -128,7 +128,10 @@ if [ "${CONFIG_MODE}" = "server-kvm" ]; then
   cfg --set-str SYSTEM_REVOCATION_KEYS ""
   cfg -d DEBUG_INFO
   cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+  cfg -d DEBUG_INFO_DWARF4
+  cfg -d DEBUG_INFO_DWARF5
   cfg -d DEBUG_INFO_BTF
+  cfg -e DEBUG_INFO_NONE
   cfg -e MODULES
   cfg -e MODULE_UNLOAD
   cfg -e KALLSYMS
@@ -203,14 +206,20 @@ export KBUILD_BUILD_USER="cnb-cloud-build"
 export KBUILD_BUILD_HOST="cnb.cool"
 export KDEB_PKGVERSION="${pkgver}-${GITHUB_RUN_NUMBER}"
 export KDEB_COMPRESS=xz
+echo "Building Debian packages with $(nproc) jobs"
 fakeroot make "${build_flags[@]}" -j"$(nproc)" bindeb-pkg
+echo "Package build finished; collecting .deb files"
 
 for deb in ../*.deb; do
   case "${deb}" in
     *-dbg_*.deb|*-dbg-*.deb)
       echo "Skipping debug-symbol package: ${deb}"
+      rm -f "${deb}"
       ;;
-    *) mv "${deb}" "${workspace}/artifacts/" ;;
+    *)
+      echo "Keeping package: ${deb}"
+      mv "${deb}" "${workspace}/artifacts/"
+      ;;
   esac
 done
 cd "${workspace}"
@@ -221,27 +230,73 @@ header_debs=(artifacts/linux-headers-*.deb)
 test "${#debs[@]}" -gt 0
 test "${#image_debs[@]}" -gt 0
 test "${#header_debs[@]}" -gt 0
+echo "Collected packages: ${#debs[@]}"
+
+heartbeat() {
+  local label="$1"
+  local seconds=0
+  while sleep 30; do
+    seconds=$((seconds + 30))
+    echo "Still working: ${label} (${seconds}s)"
+  done
+}
 
 for deb in "${debs[@]}"; do
   echo "Validating package: ${deb}"
   dpkg-deb --info "${deb}"
+  echo "Listing package contents: ${deb}"
+  heartbeat "dpkg-deb --contents ${deb}" &
+  heartbeat_pid=$!
+  set +e
   dpkg-deb --contents "${deb}" > "${deb}.contents.txt"
+  contents_status=$?
+  set -e
+  kill "${heartbeat_pid}" 2>/dev/null || true
+  wait "${heartbeat_pid}" 2>/dev/null || true
+  test "${contents_status}" -eq 0
+  echo "Running lintian: ${deb}"
+  heartbeat "lintian ${deb}" &
+  heartbeat_pid=$!
+  set +e
   timeout 8m lintian --fail-on error --suppress-tags unstripped-binary-or-object "${deb}"
+  lintian_status=$?
+  set -e
+  kill "${heartbeat_pid}" 2>/dev/null || true
+  wait "${heartbeat_pid}" 2>/dev/null || true
+  if [ "${lintian_status}" -eq 124 ]; then
+    echo "lintian timed out after 8 minutes for ${deb}" >&2
+    exit 1
+  fi
+  test "${lintian_status}" -eq 0
+  echo "Package validation finished: ${deb}"
 done
 
+echo "Extracting image package for content checks"
 mkdir package-check
+heartbeat "extract image package" &
+heartbeat_pid=$!
 dpkg-deb -x "${image_debs[0]}" package-check/image
+kill "${heartbeat_pid}" 2>/dev/null || true
+wait "${heartbeat_pid}" 2>/dev/null || true
+echo "Extracting headers package for content checks"
+heartbeat "extract headers package" &
+heartbeat_pid=$!
 dpkg-deb -x "${header_debs[0]}" package-check/headers
+kill "${heartbeat_pid}" 2>/dev/null || true
+wait "${heartbeat_pid}" 2>/dev/null || true
 test -n "$(find package-check/image/boot -maxdepth 1 -type f -name 'vmlinuz-*' -print -quit)"
 test -n "$(find package-check/image/lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)"
 test -n "$(find package-check/image/lib/modules -type f \( -name '*.ko' -o -name '*.ko.xz' -o -name '*.ko.zst' -o -name modules.builtin \) -print -quit)"
 test -n "$(find package-check/headers/usr/src -mindepth 1 -maxdepth 2 -type f -name Makefile -print -quit)"
+echo "Package content checks passed"
 
 if [ "${RUN_QEMU_SMOKE_TEST}" = "true" ]; then
+  echo "Preparing QEMU smoke test"
   rm -rf qemu-test
   mkdir -p qemu-test/root qemu-test/initramfs/{bin,dev,proc,sys}
   dpkg-deb -x "${image_debs[0]}" qemu-test/root
   kernel_image="$(find qemu-test/root/boot -maxdepth 1 -type f -name 'vmlinuz-*' | sort -V | tail -n1)"
+  echo "QEMU kernel image: ${kernel_image}"
   cp /bin/busybox qemu-test/initramfs/bin/busybox
   for applet in sh mount poweroff sleep; do
     ln -s busybox "qemu-test/initramfs/bin/${applet}"
@@ -261,6 +316,7 @@ EOF
   chmod +x qemu-test/initramfs/init
   (cd qemu-test/initramfs && find . -print0 | cpio --null -ov --format=newc) > qemu-test/initramfs.cpio
 
+  echo "Starting QEMU smoke test (max 180s)"
   set +e
   qemu-system-x86_64 \
     -machine pc,accel=tcg -cpu max -m 2048M -smp 2 \
@@ -288,6 +344,7 @@ EOF
   set -e
   cat qemu-test/serial.log
   test "${boot_ok}" -eq 1
+  echo "QEMU smoke test passed"
   if [ "${qemu_status}" -ne 0 ] && [ "${qemu_status}" -ne 143 ]; then
     echo "QEMU exited with status ${qemu_status} after the success marker."
   fi
