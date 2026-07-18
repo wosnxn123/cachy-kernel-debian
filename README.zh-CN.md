@@ -12,8 +12,7 @@
 - 最新 RC 源码轨道：`linux-cachyos-rc`。
 - 每条内核线均构建 `x64v1`、`x64v2`、`x64v3`。
 
-两条源码轨道分别遵循 CachyOS 上游的服务器配置和 RC 配置。Release 与
-`BUILD-MANIFEST.txt` 会同时记录源码轨道和 profile。
+两条源码轨道分别执行对应 CachyOS 官方 `PKGBUILD` 的 `prepare()`，由上游直接决定补丁、调度器、CachyOS config、LTO/编译器、HZ、tick、preemption、THP、O3、governor、BBR3 和 KCFI。准备阶段采用上游正式构建 profile，而不是它仅供 CI 加速的体积优化回退，因此上游 `cc_harder=yes` 会保留 O3。随后才叠加 Debian/KVM 必需配置及 `x64vN` 标识。Release 与 `BUILD-MANIFEST.txt` 会记录最终解析出的 profile。
 
 内核版本、`uname -r`、`.deb` 包名、Release 名称、Workflow Artifact 名称和 `BUILD-MANIFEST.txt` 都会标明 `x64v1`、`x64v2` 或 `x64v3`。
 
@@ -44,10 +43,10 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 - 生成每个 CPU 基线独立的 Release；
 - 上传带 `x64vN` 标识的 `.deb` 和 `BUILD-MANIFEST.txt`；
 - 使用 QEMU 做最小启动测试；
-- 稳定源码轨道使用 EEVDF、300 Hz、full tickless、lazy preemption、THP always；
-- RC 源码轨道使用 CachyOS 调度器、1000 Hz、full tickless、full preemption、THP always。
+- 按当前上游默认值，稳定源码轨道使用 EEVDF、GCC/no-LTO、300 Hz、full tickless、lazy preemption、THP always；
+- 按当前上游默认值，RC 源码轨道使用 CachyOS 调度器、Clang ThinLTO、1000 Hz、full tickless、full preemption、THP always。
 
-稳定/RC 不只表示源码来源，也表示上游 profile 的区别。
+这些值不是本仓库永久写死的 profile；上游以后调整 `PKGBUILD` 的准备逻辑时，后续构建会直接跟随。
 
 ## 手动构建
 
@@ -59,7 +58,7 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 - `cpu_target`：`generic`、`generic_v2` 或 `generic_v3`，产物分别标记为 `x64v1`、`x64v2`、`x64v3`；
 - `cpu_scheduler`：使用所选变体的 `upstream-default`，或者手动覆盖为指定调度器。
 
-推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile。手动混搭调度器属于高级测试用途。工作流会应用所选官方 `PKGBUILD` 列出的调度器补丁，然后复用相同的 Debian 打包、校验、Artifact、Release 和可选 QEMU 启动测试流程。这个手动工作流不会影响每天运行的稳定版/RC 六项自动矩阵。
+推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile。手动混搭调度器属于高级测试用途。工作流会执行所选官方 `PKGBUILD` 的准备逻辑，然后复用相同的 Debian 打包、校验、Artifact、Release 和可选 QEMU 启动测试流程。这个手动工作流不会影响每天运行的稳定版/RC 六项自动矩阵。
 
 推荐 runner：`ubuntu-24.04`。Blacksmith runner 只有在你的 GitHub 组织已启用对应集成时才能使用。
 

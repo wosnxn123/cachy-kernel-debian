@@ -21,7 +21,11 @@ The workflow fetches the newest kernel metadata from the official
 [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) packaging
 repository, downloads the matching CachyOS kernel source tarball, applies a
 server-oriented configuration pass, compiles the kernel, and packages the
-result with the kernel's upstream Debian packaging target.
+result with the kernel's upstream Debian packaging target. The official
+`PKGBUILD` `prepare()` function applies the upstream patches and profile first;
+the Debian/KVM requirements and visible CPU-baseline suffix are added afterward.
+Preparation uses the upstream release profile rather than its CI-only
+size-optimization fallback, so an upstream `cc_harder=yes` remains O3.
 
 Each run builds six packages:
 
@@ -29,7 +33,9 @@ Each run builds six packages:
 - Latest RC source track: `linux-cachyos-rc` with x86-64-v1/v2/v3.
 
 The stable track follows the upstream server profile, while the RC track follows
-the upstream CachyOS RC profile. The source track and tuning profile are both
+the upstream CachyOS RC profile. Scheduler, CachyOS config, LTO/compiler mode,
+timer frequency, tick mode, preemption, THP, O3, governor, BBR3, and KCFI values
+are resolved from the selected upstream `PKGBUILD`. The resolved values are
 recorded in the Release and `BUILD-MANIFEST.txt`.
 
 The kernel localversion and package/release names contain `x64v1`, `x64v2`, or
@@ -91,9 +97,9 @@ only one customized package is required. Its additional inputs are:
   upstream default is recommended because it preserves the selected variant's
   intended combination. Explicit overrides are intended for advanced testing.
 
-The custom workflow applies scheduler patches listed by the selected official
-`PKGBUILD`, then uses the same Debian packaging, validation, artifact, Release,
-and optional QEMU test path as the scheduled workflow.
+The custom workflow runs the selected official `PKGBUILD` preparation logic,
+then uses the same Debian packaging, validation, artifact, Release, and optional
+QEMU test path as the scheduled workflow.
 
 ## Available Build Inputs
 
@@ -133,10 +139,11 @@ baseline. `x64v2` is not a CPU model name; it is a minimum instruction-set
 level, and `x64v3` is a stricter level intended for newer machines.
 
 The stable and RC tracks intentionally differ because they follow their
-respective upstream profiles. Stable uses EEVDF, 300 Hz, full tickless, lazy
-preemption, and THP always. The RC track uses the CachyOS scheduler, 1000 Hz,
-full tickless, full preemption, and THP always. The stable/RC label therefore
-describes both source track and tuning profile.
+respective upstream profiles. At the time of writing, Stable uses EEVDF, GCC
+without LTO, 300 Hz, full tickless, lazy preemption, and THP always. RC uses the
+CachyOS scheduler, Clang ThinLTO, 1000 Hz, full tickless, full preemption, and
+THP always. These are upstream defaults, not permanently hard-coded profiles in
+this repository.
 
 ### `run_qemu_smoke_test`
 
@@ -177,9 +184,9 @@ release. The default is enabled.
 
 ## Server-Oriented Kernel Configuration
 
-The workflow starts from the matching CachyOS configuration and preserves the
-upstream profile for each source track. It also ensures common Debian server
-requirements, including:
+The workflow runs the matching upstream `PKGBUILD` preparation logic instead of
+maintaining a separate copy of its profile rules. It then ensures common Debian
+server requirements, including:
 
 - initramfs booting
 - loadable kernel modules

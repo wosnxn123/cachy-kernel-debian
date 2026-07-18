@@ -98,8 +98,6 @@ jobs:
           for variant in linux-cachyos-server linux-cachyos-rc; do
             cd "${GITHUB_WORKSPACE}/upstream/${variant}"
             export _processor_opt=generic_v2
-            export _use_llvm_lto=none
-            export _use_gcc_suffix=no
             export _build_zfs=no
             export _build_nvidia_open=no
             export _build_r8125=no
@@ -127,7 +125,7 @@ jobs:
     name: Build, package, and test (${{ matrix.track }} x64v${{ matrix.cpu_level }})
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.build_matrix || '{"include":[{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"eevdf","cpu_target":"generic","cpu_level":1},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"eevdf","cpu_target":"generic_v2","cpu_level":2},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"eevdf","cpu_target":"generic_v3","cpu_level":3},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"cachyos","cpu_target":"generic","cpu_level":1},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"cachyos","cpu_target":"generic_v2","cpu_level":2},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"cachyos","cpu_target":"generic_v3","cpu_level":3}]}') }}
+      matrix: ${{ fromJSON(inputs.build_matrix || '{"include":[{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"upstream-default","cpu_target":"generic","cpu_level":1},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"upstream-default","cpu_target":"generic_v2","cpu_level":2},{"track":"stable","profile":"stable","kernel_variant":"linux-cachyos-server","cpu_scheduler":"upstream-default","cpu_target":"generic_v3","cpu_level":3},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"upstream-default","cpu_target":"generic","cpu_level":1},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"upstream-default","cpu_target":"generic_v2","cpu_level":2},{"track":"aggressive","profile":"aggressive","kernel_variant":"linux-cachyos-rc","cpu_scheduler":"upstream-default","cpu_target":"generic_v3","cpu_level":3}]}') }}
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 720
     env:
@@ -167,6 +165,7 @@ jobs:
             dwarves \
             fakeroot \
             flex \
+            gettext \
             git \
             kmod \
             libdw-dev \
@@ -178,11 +177,15 @@ jobs:
             pahole \
             patch \
             perl \
+            pkg-config \
             python3 \
             qemu-system-x86 \
             rsync \
             rustc \
+            rust-src \
+            xxhash \
             xz-utils \
+            zlib1g-dev \
             zstd
 
       - name: Fetch newest CachyOS kernel metadata and source
@@ -197,8 +200,6 @@ jobs:
             export _cpusched="${REQUESTED_CPU_SCHEDULER}"
           fi
           export _processor_opt="${CPU_TARGET}"
-          export _use_llvm_lto=none
-          export _use_gcc_suffix=no
           export _build_zfs=no
           export _build_nvidia_open=no
           export _build_r8125=no
@@ -207,9 +208,24 @@ jobs:
 
           source PKGBUILD
 
-          for resolved_setting in _cpusched _cachy_config _HZ_ticks _tickrate _preempt _hugepage; do
+          for resolved_setting in \
+            _cpusched _cachy_config _HZ_ticks _tickrate _preempt _hugepage \
+            _use_llvm_lto _cc_harder _per_gov _tcp_bbr3 _use_kcfi; do
             test -n "${!resolved_setting:-}"
           done
+
+          source_url=""
+          for source_item in "${source[@]}"; do
+            candidate_url="${source_item#*::}"
+            case "${candidate_url}" in
+              https://github.com/CachyOS/linux/releases/download/*.tar.gz|\
+              https://github.com/CachyOS/linux/releases/download/*.tar.xz|\
+              https://github.com/CachyOS/linux/releases/download/*.tar.zst)
+                source_url="${candidate_url}"
+                break ;;
+            esac
+          done
+          test -n "${source_url}"
 
           {
             echo "CPU_SCHEDULER=${_cpusched}"
@@ -218,6 +234,11 @@ jobs:
             echo "TICK_RATE=${_tickrate}"
             echo "PREEMPT_MODE=${_preempt}"
             echo "HUGEPAGE_MODE=${_hugepage}"
+            echo "USE_LLVM_LTO=${_use_llvm_lto}"
+            echo "CC_HARDER=${_cc_harder}"
+            echo "PERFORMANCE_GOVERNOR=${_per_gov}"
+            echo "TCP_BBR3=${_tcp_bbr3}"
+            echo "USE_KCFI=${_use_kcfi}"
           } >> "${GITHUB_ENV}"
 
           {
@@ -225,17 +246,17 @@ jobs:
             echo "pkgver=${pkgver}"
             echo "pkgrel=${pkgrel}"
             echo "srcname=${_srcname}"
-            echo "source_url=https://github.com/CachyOS/linux/releases/download/${_srcname}/${_srcname}.tar.gz"
+            echo "source_url=${source_url}"
           } >> "${GITHUB_OUTPUT}"
 
           cd "${GITHUB_WORKSPACE}/build"
+          source_archive="${source_url##*/}"
           curl --fail --location --retry 5 --retry-delay 10 \
-            --output "${_srcname}.tar.gz" \
-            "https://github.com/CachyOS/linux/releases/download/${_srcname}/${_srcname}.tar.gz"
-          tar -xf "${_srcname}.tar.gz"
-          cp "linux-cachyos-packaging/${KERNEL_VARIANT}/config" "${_srcname}/.config"
+            --output "${source_archive}" \
+            "${source_url}"
+          tar -xf "${source_archive}"
+          ln -s "${GITHUB_WORKSPACE}/build/linux-cachyos-packaging/${KERNEL_VARIANT}/config" config
 
-          mkdir -p cachyos-patches
           for source_item in "${source[@]}"; do
             patch_url="${source_item#*::}"
             if [[ "${patch_url}" != http* || "${patch_url}" != *.patch ]]; then
@@ -243,12 +264,22 @@ jobs:
             fi
             patch_name="${patch_url##*/}"
             curl --fail --location --retry 5 --retry-delay 10 \
-              --output "cachyos-patches/${patch_name}" \
+              --output "${patch_name}" \
               "${patch_url}"
-            patch --batch --forward -Np1 \
-              -d "${_srcname}" \
-              < "cachyos-patches/${patch_name}"
           done
+
+          export srcdir="${GITHUB_WORKSPACE}/build"
+          export startdir="${GITHUB_WORKSPACE}/build/linux-cachyos-packaging/${KERNEL_VARIANT}"
+          export CI=""
+          export GITHUB_RUN_ID=""
+          set +o pipefail
+          prepare
+          set -o pipefail
+
+          rm -f \
+            "${_srcname}/localversion.10-pkgrel" \
+            "${_srcname}/localversion.20-pkgname" \
+            "${_srcname}/version"
 
           echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}" >> "${GITHUB_OUTPUT}"
 
@@ -273,20 +304,6 @@ jobs:
           cfg -e KALLSYMS_ALL
           cfg -e IKCONFIG
           cfg -e IKCONFIG_PROC
-          if [ "${CACHY_CONFIG}" = "yes" ]; then
-            cfg -e CACHY
-          else
-            cfg -d CACHY
-          fi
-          cfg -d SCHED_BORE -d SCHED_ALT -d SCHED_BMQ -d PREEMPT_RT
-          case "${CPU_SCHEDULER}" in
-            cachyos|bore|hardened) cfg -e SCHED_BORE ;;
-            bmq) cfg -e SCHED_ALT -e SCHED_BMQ ;;
-            eevdf) ;;
-            rt) cfg -e PREEMPT_RT ;;
-            rt-bore) cfg -e SCHED_BORE -e PREEMPT_RT ;;
-            *) echo "Unsupported CPU scheduler: ${CPU_SCHEDULER}" >&2; exit 1 ;;
-          esac
           cfg -e GENERIC_CPU
           for cpu_opt in \
             GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
@@ -302,41 +319,9 @@ jobs:
             generic_v3) cfg --set-val X86_64_VERSION 3 ;;
             *) echo "Unsupported CPU target: ${CPU_TARGET}" >&2; exit 1 ;;
           esac
-          cfg -e PREEMPT_DYNAMIC
-          for hz_config in HZ_100 HZ_250 HZ_300 HZ_500 HZ_600 HZ_750 HZ_1000; do
-            cfg -d "${hz_config}"
-          done
-          case "${HZ_TICKS}" in
-            100|250|300|500|600|750|1000)
-              cfg -e "HZ_${HZ_TICKS}" --set-val HZ "${HZ_TICKS}" ;;
-            *) echo "Unsupported timer frequency: ${HZ_TICKS}" >&2; exit 1 ;;
-          esac
-          case "${TICK_RATE}" in
-            periodic)
-              cfg -d NO_HZ_IDLE -d NO_HZ_FULL -d NO_HZ -d NO_HZ_COMMON -e HZ_PERIODIC ;;
-            idle)
-              cfg -d HZ_PERIODIC -d NO_HZ_FULL -e NO_HZ_IDLE -e NO_HZ -e NO_HZ_COMMON ;;
-            full)
-              cfg -d HZ_PERIODIC -d NO_HZ_IDLE -d CONTEXT_TRACKING_FORCE
-              cfg -e NO_HZ_FULL_NODEF -e NO_HZ_FULL -e NO_HZ -e NO_HZ_COMMON -e CONTEXT_TRACKING ;;
-            *) echo "Unsupported tick mode: ${TICK_RATE}" >&2; exit 1 ;;
-          esac
-          if [[ "${CPU_SCHEDULER}" != "rt" && "${CPU_SCHEDULER}" != "rt-bore" ]]; then
-            case "${PREEMPT_MODE}" in
-              full) cfg -e PREEMPT -d PREEMPT_LAZY ;;
-              lazy) cfg -d PREEMPT -e PREEMPT_LAZY ;;
-              *) echo "Unsupported preemption mode: ${PREEMPT_MODE}" >&2; exit 1 ;;
-            esac
-          fi
-          case "${HUGEPAGE_MODE}" in
-            always) cfg -d TRANSPARENT_HUGEPAGE_MADVISE -e TRANSPARENT_HUGEPAGE_ALWAYS ;;
-            madvise) cfg -d TRANSPARENT_HUGEPAGE_ALWAYS -e TRANSPARENT_HUGEPAGE_MADVISE ;;
-            *) echo "Unsupported THP mode: ${HUGEPAGE_MODE}" >&2; exit 1 ;;
-          esac
           cfg -e HIGH_RES_TIMERS
           cfg -e CPU_FREQ
           cfg -e CPU_FREQ_GOV_SCHEDUTIL
-          cfg -e CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
           cfg -e X86_AMD_PSTATE
           cfg -e ACPI
           cfg -e EFI
@@ -370,8 +355,6 @@ jobs:
 
           cfg -e NET
           cfg -e INET
-          cfg -m TCP_CONG_BBR
-          cfg -m NET_SCH_FQ
           cfg -m NETFILTER
           cfg -m NF_TABLES
           cfg -m BRIDGE
@@ -436,7 +419,14 @@ jobs:
           cfg -m VIRTIO_NET
           cfg -m VIRTIO_CONSOLE
 
-          make olddefconfig
+          build_flags=()
+          case "${USE_LLVM_LTO}" in
+            none) ;;
+            thin|thin-dist|full)
+              build_flags=(CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1) ;;
+            *) echo "Unsupported upstream LTO mode: ${USE_LLVM_LTO}" >&2; exit 1 ;;
+          esac
+          make "${build_flags[@]}" olddefconfig
           grep -E 'CONFIG_(GENERIC_CPU|GENERIC_CPU[234]|X86_64_VERSION|BLK_DEV_INITRD|RD_GZIP|SERIAL_8250_CONSOLE)=' .config || true
           scripts/config --state MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD || true
           for required_config in \
@@ -465,6 +455,12 @@ jobs:
               grep -qx 'CONFIG_PREEMPT_RT=y' .config ;;
           esac
           grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
+          case "${USE_LLVM_LTO}" in
+            none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
+            thin) grep -qx 'CONFIG_LTO_CLANG_THIN=y' .config ;;
+            thin-dist) grep -qx 'CONFIG_LTO_CLANG_THIN_DIST=y' .config ;;
+            full) grep -qx 'CONFIG_LTO_CLANG_FULL=y' .config ;;
+          esac
 
       - name: Compile kernel and create Debian packages
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
@@ -474,7 +470,14 @@ jobs:
           export KBUILD_BUILD_HOST="users.noreply.github.com"
           export KDEB_PKGVERSION="${{ steps.cachyos.outputs.pkgver }}-${{ github.run_number }}"
           export KDEB_COMPRESS=xz
-          fakeroot make -j"$(nproc)" bindeb-pkg
+          build_flags=()
+          case "${USE_LLVM_LTO}" in
+            none) ;;
+            thin|thin-dist|full)
+              build_flags=(CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1) ;;
+            *) echo "Unsupported upstream LTO mode: ${USE_LLVM_LTO}" >&2; exit 1 ;;
+          esac
+          fakeroot make "${build_flags[@]}" -j"$(nproc)" bindeb-pkg
 
           mkdir -p "${GITHUB_WORKSPACE}/artifacts"
           mv ../*.deb "${GITHUB_WORKSPACE}/artifacts/"
@@ -599,6 +602,11 @@ jobs:
             echo "Tick mode: ${TICK_RATE}"
             echo "Preemption: ${PREEMPT_MODE}"
             echo "Transparent hugepages: ${HUGEPAGE_MODE}"
+            echo "LLVM LTO: ${USE_LLVM_LTO}"
+            echo "O3 requested upstream: ${CC_HARDER}"
+            echo "Performance governor requested upstream: ${PERFORMANCE_GOVERNOR}"
+            echo "BBR3 requested upstream: ${TCP_BBR3}"
+            echo "KCFI requested upstream: ${USE_KCFI}"
             echo "CPU target: ${CPU_TARGET}"
             echo "CPU baseline: x86-64-v${CPU_LEVEL}"
             echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
