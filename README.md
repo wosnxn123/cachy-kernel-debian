@@ -93,11 +93,18 @@ the `ubuntu-24.04` fallback runner.
 Every run builds these CPU baselines:
 
 - `x64v1` / `generic`: broadest compatibility.
-- `x64v2` / `generic_v2`: recommended for the current E5-2696 v2 VM.
+- `x64v2` / `generic_v2`: supported by the current E5-2696 v2 VM.
 - `x64v3` / `generic_v3`: requires AVX2, BMI1/2, FMA, and related features.
 
 The workflow deliberately does not use `native`: a GitHub-hosted build would
 optimize for the runner CPU, not the server where the kernel will run.
+
+The stable and aggressive tracks intentionally use different profiles. Stable
+uses the upstream server configuration with EEVDF, 300 Hz, idle tickless, lazy
+preemption, and THP madvise. The RC track uses the newest release candidate
+with the CachyOS scheduler, 1000 Hz, full tickless, full preemption, and THP
+always. They are therefore different stability/performance products, not a
+strict apples-to-apples benchmark of two source versions.
 
 ### `run_qemu_smoke_test`
 

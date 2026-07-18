@@ -19,10 +19,10 @@
 | 标识 | 配置 | 说明 |
 | --- | --- | --- |
 | `x64v1` | `generic` | 兼容性最广 |
-| `x64v2` | `generic_v2` | 你的 E5-2696 v2 虚拟机推荐使用 |
+| `x64v2` | `generic_v2` | 当前 E5-2696 v2 虚拟机支持 |
 | `x64v3` | `generic_v3` | 需要 AVX2、BMI1/2、FMA 等指令 |
 
-当前 E5-2696 v2 支持 v2，不支持 v3。不要在这台虚拟机上启动 v3 内核；v3 包用于更新的宿主机。
+当前 E5-2696 v2 支持 x86-64-v2，不支持 x86-64-v3。不要在这台虚拟机上启动 `x64v3` 内核；v3 包用于更新的宿主机。
 
 工作流不会使用 `native`。GitHub runner 上的 `native` 会针对 runner CPU 编译，而不是针对你的服务器 CPU。需要 Ivy Bridge 原生优化时，必须在目标 VM 或同型号 CPU 的机器上本地编译。
 
@@ -37,6 +37,8 @@
 - 使用 QEMU 做最小启动测试；
 - 稳定版使用 300 Hz、idle tickless、lazy preemption、THP madvise；
 - 激进 RC 使用 1000 Hz、full tickless、full preemption、THP always。
+
+稳定版和激进 RC 的配置不同是有意的：稳定版优先可预测性和长期运行，RC 版优先测试最新内核和更激进的调度参数。因此两者不是只更换内核源码的公平性能对比；要做严格对比，应使用相同 profile。
 
 ## 手动构建
 
