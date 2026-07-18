@@ -125,7 +125,7 @@ start with `single`, `aggressive`, and `generic_v2` when validating the setup.
 ### CNB Setup
 
 1. Create an empty CNB repository. The default expected path is
-   `Snowflake-2026/cachy-kernel-debian`.
+   `Snowflake-2025/cachy-kernel-debian`.
 2. Create a CNB access token that can write repository code and has
    `repo-cnb-trigger:rw` permission.
 3. Add that token to the GitHub repository as the Actions secret `CNB_TOKEN`.
