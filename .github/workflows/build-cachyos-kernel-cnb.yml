@@ -42,14 +42,6 @@ on:
           - hardened
           - rt
           - rt-bore
-      config_mode:
-        description: "Configuration policy after the upstream PKGBUILD prepare step"
-        required: true
-        default: "upstream"
-        type: choice
-        options:
-          - upstream
-          - server-kvm
       run_qemu_smoke_test:
         description: "Boot the built kernel under QEMU before publishing"
         required: true
@@ -78,10 +70,6 @@ on:
       cpu_scheduler:
         required: false
         default: "upstream-default"
-        type: string
-      config_mode:
-        required: false
-        default: "upstream"
         type: string
       run_qemu_smoke_test:
         required: false
@@ -121,7 +109,6 @@ jobs:
           KERNEL_VARIANT: ${{ inputs.kernel_variant }}
           SELECTED_CPU_TARGET: ${{ inputs.cpu_target }}
           SELECTED_CPU_SCHEDULER: ${{ inputs.cpu_scheduler }}
-          SELECTED_CONFIG_MODE: ${{ inputs.config_mode }}
         run: |
           set -euo pipefail
           case "${KERNEL_VARIANT}" in
@@ -142,19 +129,14 @@ jobs:
             upstream-default|cachyos|eevdf|bore|bmq|hardened|rt|rt-bore) ;;
             *) echo "Unsupported scheduler override: ${SELECTED_CPU_SCHEDULER}" >&2; exit 1 ;;
           esac
-          case "${SELECTED_CONFIG_MODE}" in
-            upstream|server-kvm) ;;
-            *) echo "Unsupported configuration mode: ${SELECTED_CONFIG_MODE}" >&2; exit 1 ;;
-          esac
           matrix="$(jq -cn \
             --arg track "${track}" \
             --arg profile "${profile}" \
             --arg variant "${KERNEL_VARIANT}" \
             --arg cpu_target "${SELECTED_CPU_TARGET}" \
             --arg scheduler "${SELECTED_CPU_SCHEDULER}" \
-            --arg config_mode "${SELECTED_CONFIG_MODE}" \
             --argjson cpu_level "${cpu_level}" \
-            '{include: [{track: $track, profile: $profile, kernel_variant: $variant, cpu_target: $cpu_target, cpu_scheduler: $scheduler, config_mode: $config_mode, cpu_level: $cpu_level}]}')"
+            '{include: [{track: $track, profile: $profile, kernel_variant: $variant, cpu_target: $cpu_target, cpu_scheduler: $scheduler, cpu_level: $cpu_level}]}')"
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
 
   sync-cnb:
@@ -225,7 +207,6 @@ jobs:
             --arg cpu_target "${{ matrix.cpu_target }}" \
             --arg cpu_level "${{ matrix.cpu_level }}" \
             --arg cpu_scheduler "${{ matrix.cpu_scheduler }}" \
-            --arg config_mode "${{ matrix.config_mode }}" \
             --arg profile "${{ matrix.profile }}" \
             --arg track "${{ matrix.track }}" \
             --arg qemu "${RUN_QEMU_SMOKE_TEST}" \
@@ -247,7 +228,7 @@ jobs:
                 REQUESTED_CPU_SCHEDULER: $cpu_scheduler,
                 CPU_TARGET: $cpu_target,
                 CPU_LEVEL: $cpu_level,
-                CONFIG_MODE: $config_mode,
+                CONFIG_MODE: "server-kvm",
                 BUILD_PROFILE: $profile,
                 BUILD_TRACK: $track,
                 RUN_QEMU_SMOKE_TEST: $qemu,

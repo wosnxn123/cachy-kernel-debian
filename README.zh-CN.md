@@ -8,7 +8,7 @@
 
 每次手动构建只生成一个组合。CNB 菜单提供 official default、server、RC、LTS、EEVDF、BORE、BMQ、hardened、RT-BORE 和 Deckify 变体，以及 `x64v1`、`x64v2`、`x64v3` CPU 基线和调度器选择。
 
-所选源码变体执行对应 CachyOS 官方 `PKGBUILD` 的 `prepare()`，由上游直接决定补丁、调度器、CachyOS config、LTO/编译器、HZ、tick、preemption、THP、O3、governor、BBR3 和 KCFI。准备阶段采用上游正式构建 profile，而不是它仅供 CI 加速的体积优化回退，因此上游 `cc_harder=yes` 会保留 O3。随后由 `config_mode` 决定保留上游 `.config`，还是叠加 Debian/KVM 服务端配置；两种模式都会设置所选 `x64vN` CPU 基线与可见标识。Release 与 `BUILD-MANIFEST.txt` 会记录最终解析出的 profile 和配置模式。
+所选源码变体执行对应 CachyOS 官方 `PKGBUILD` 的 `prepare()`，由上游直接决定补丁、调度器、CachyOS config、LTO/编译器、HZ、tick、preemption、THP、O3、governor、BBR3 和 KCFI。准备阶段采用上游正式构建 profile，而不是它仅供 CI 加速的体积优化回退，因此上游 `cc_harder=yes` 会保留 O3。随后固定叠加本仓库的 Debian/KVM 服务端兼容配置，并设置所选 `x64vN` CPU 基线与可见标识。Release 与 `BUILD-MANIFEST.txt` 会记录最终解析出的 profile。
 
 内核版本、`uname -r`、`.deb` 包名、Release 名称、Workflow Artifact 名称和 `BUILD-MANIFEST.txt` 都会标明 `x64v1`、`x64v2` 或 `x64v3`。
 
@@ -43,9 +43,8 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 - `kernel_variant`：CachyOS 官方仓库当前提供的 default、server、RC、LTS、EEVDF、BORE、BMQ、hardened、RT-BORE 和 Deckify 变体；
 - `cpu_target`：`generic`、`generic_v2` 或 `generic_v3`，产物分别标记为 `x64v1`、`x64v2`、`x64v3`；
 - `cpu_scheduler`：使用所选变体的 `upstream-default`，或者手动覆盖为指定调度器。
-- `config_mode`：`upstream` 仅设置 CPU 基线与内核包标识，其余 `.config` 跟随上游；`server-kvm` 在此基础上强制启用串口、VirtIO、常见文件系统和 KVM 服务端配置。
 
-当前这台无桌面 Ivy Bridge 级 KVM 客户机建议选择 `linux-cachyos-rc`、`generic_v2`、`upstream-default` 与 `upstream`。推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile；手动混搭调度器属于高级测试用途。
+当前这台无桌面 Ivy Bridge 级 KVM 客户机建议选择 `linux-cachyos-rc`、`generic_v2` 与 `upstream-default`。推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile；手动混搭调度器属于高级测试用途。
 
 ## CNB 云原生构建
 
@@ -73,7 +72,7 @@ CNB 不会获得 GitHub 提交代码的权限。GitHub 使用 `CNB_TOKEN` 将工
 
 ### 每十天的激进 x64v2 检查
 
-该自动工作流固定为 `linux-cachyos-rc`、`generic_v2`（`x64v2`）、`upstream-default` 与 `upstream` 配置模式。GitHub 每天只做轻量计时检查；未满十天不会拉取上游、更不会启动 CNB。满十天后才检查 RC 的 `pkgver/pkgrel`，将检查时间写入 `CNB_AGGRESSIVE_V2_LAST_CHECK` Actions Variable，并且仅在没有对应 Release 时启动构建。
+该自动工作流固定为 `linux-cachyos-rc`、`generic_v2`（`x64v2`）与 `upstream-default`，并使用固定的 Debian/KVM 服务端兼容配置。GitHub 每天只做轻量计时检查；未满十天不会拉取上游、更不会启动 CNB。满十天后才检查 RC 的 `pkgver/pkgrel`，将检查时间写入 `CNB_AGGRESSIVE_V2_LAST_CHECK` Actions Variable，并且仅在没有对应 Release 时启动构建。
 
 构建成功后，在对应 Release 或 Workflow Artifact 下载普通的 image 和 headers 包，不要下载 `-dbg` 包：
 

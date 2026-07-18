@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 required_env=(
   KERNEL_VARIANT REQUESTED_CPU_SCHEDULER CPU_TARGET CPU_LEVEL
-  BUILD_PROFILE BUILD_TRACK CONFIG_MODE RUN_QEMU_SMOKE_TEST PUBLISH_RELEASE
+  BUILD_PROFILE BUILD_TRACK RUN_QEMU_SMOKE_TEST PUBLISH_RELEASE
   GITHUB_REPOSITORY GITHUB_SHA GITHUB_RUN_NUMBER
 )
 for name in "${required_env[@]}"; do
@@ -14,13 +14,12 @@ for name in "${required_env[@]}"; do
   fi
 done
 
+# This Debian builder always applies the repository's server/KVM compatibility pass.
+CONFIG_MODE=server-kvm
+
 case "${CPU_TARGET}:${CPU_LEVEL}" in
   generic:1|generic_v2:2|generic_v3:3) ;;
   *) echo "CPU target and level do not match: ${CPU_TARGET}:${CPU_LEVEL}" >&2; exit 1 ;;
-esac
-case "${CONFIG_MODE}" in
-  upstream|server-kvm) ;;
-  *) echo "Unsupported configuration mode: ${CONFIG_MODE}" >&2; exit 1 ;;
 esac
 
 workspace="${CNB_BUILD_WORKSPACE:-$(pwd)}"
@@ -117,7 +116,7 @@ cfg() {
   scripts/config "$@" || true
 }
 
-cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}-${CONFIG_MODE}"
+cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
 case "${CPU_TARGET}" in
   generic) cfg --set-val X86_64_VERSION 1 ;;
   generic_v2) cfg --set-val X86_64_VERSION 2 ;;
@@ -206,7 +205,14 @@ export KDEB_PKGVERSION="${pkgver}-${GITHUB_RUN_NUMBER}"
 export KDEB_COMPRESS=xz
 fakeroot make "${build_flags[@]}" -j"$(nproc)" bindeb-pkg
 
-mv ../*.deb "${workspace}/artifacts/"
+for deb in ../*.deb; do
+  case "${deb}" in
+    *-dbg_*.deb|*-dbg-*.deb)
+      echo "Skipping debug-symbol package: ${deb}"
+      ;;
+    *) mv "${deb}" "${workspace}/artifacts/" ;;
+  esac
+done
 cd "${workspace}"
 shopt -s nullglob
 debs=(artifacts/*.deb)
@@ -217,9 +223,10 @@ test "${#image_debs[@]}" -gt 0
 test "${#header_debs[@]}" -gt 0
 
 for deb in "${debs[@]}"; do
+  echo "Validating package: ${deb}"
   dpkg-deb --info "${deb}"
   dpkg-deb --contents "${deb}" > "${deb}.contents.txt"
-  lintian --fail-on error --suppress-tags unstripped-binary-or-object "${deb}"
+  timeout 8m lintian --fail-on error --suppress-tags unstripped-binary-or-object "${deb}"
 done
 
 mkdir package-check
@@ -262,12 +269,15 @@ EOF
     -display none -no-reboot -monitor none -serial file:qemu-test/serial.log &
   qemu_pid=$!
   boot_ok=0
-  for _ in $(seq 1 180); do
+  for second in $(seq 1 180); do
     if grep -q CACHYOS_QEMU_BOOT_OK qemu-test/serial.log 2>/dev/null; then
       boot_ok=1
       break
     fi
     kill -0 "${qemu_pid}" 2>/dev/null || break
+    if [ $((second % 30)) -eq 0 ]; then
+      echo "Waiting for QEMU boot marker (${second}s/180s)"
+    fi
     sleep 1
   done
   if [ "${boot_ok}" -eq 1 ] && kill -0 "${qemu_pid}" 2>/dev/null; then
@@ -290,7 +300,7 @@ fi
   echo "Variant: ${KERNEL_VARIANT}"
   echo "Source track: ${BUILD_TRACK}"
   echo "Profile: ${BUILD_PROFILE}"
-  echo "Configuration mode: ${CONFIG_MODE}"
+  echo "Configuration: Debian server/KVM baseline"
   echo "Scheduler: ${CPU_SCHEDULER}"
   echo "CachyOS config: ${CACHY_CONFIG}"
   echo "Timer frequency: ${HZ_TICKS} Hz"
@@ -304,7 +314,7 @@ fi
   echo "KCFI requested upstream: ${USE_KCFI}"
   echo "CPU target: ${CPU_TARGET}"
   echo "CPU baseline: x86-64-v${CPU_LEVEL}"
-  echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}-${CONFIG_MODE}"
+  echo "Kernel localversion: -x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
   echo "Build provider: CNB Cloud Native Build ($(nproc) vCPU)"
   echo "GitHub Actions run: ${GITHUB_RUN_ID:-unknown}"
   echo "Built at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -316,11 +326,11 @@ if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
   if [ "${BUILD_TRACK}" = "custom" ]; then
     release_variant="${KERNEL_VARIANT#linux-cachyos-}"
-    release_tag="cachyos-debian-custom-${release_variant}-${CONFIG_MODE}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+    release_tag="cachyos-debian-custom-${release_variant}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   else
-    release_tag="cachyos-debian-${BUILD_TRACK}-${CONFIG_MODE}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
+    release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   fi
-  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, ${CONFIG_MODE}, x86-64-v${CPU_LEVEL}"
+  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, Debian server/KVM, x86-64-v${CPU_LEVEL}"
   release_flags=(--repo "${GITHUB_REPOSITORY}" --title "${release_name}" --notes-file artifacts/BUILD-MANIFEST.txt)
   if [ "${BUILD_TRACK}" = "aggressive" ]; then
     release_flags+=(--prerelease)

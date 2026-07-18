@@ -25,8 +25,7 @@ target. The official
 the Debian/KVM requirements and visible CPU-baseline suffix are added afterward.
 Preparation uses the upstream release profile rather than its CI-only
 size-optimization fallback, so an upstream `cc_harder=yes` remains O3. The
-manual `config_mode` chooses whether to retain that upstream configuration or
-apply the repository's server/KVM configuration pass afterward.
+repository then applies its fixed Debian server/KVM compatibility pass.
 
 Each manual run builds one selected combination. The UI includes the official
 default, server, RC, LTS, EEVDF, BORE, BMQ, hardened, RT-BORE, and Deckify
@@ -70,10 +69,6 @@ latest `aggressive / generic_v2` version has no matching Release.
    - `kernel_variant`: official CachyOS packaging variant.
    - `cpu_target`: `generic`, `generic_v2`, or `generic_v3`.
    - `cpu_scheduler`: `upstream-default` or an explicit scheduler override.
-   - `config_mode`: `upstream` keeps the selected upstream configuration after
-     setting the requested CPU baseline and visible package suffix; `server-kvm`
-     additionally enforces the repository's serial, VirtIO, filesystem, and
-     KVM-oriented settings.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
    - `publish_release`: whether to upload the final packages to a GitHub
      Release.
@@ -82,10 +77,9 @@ latest `aggressive / generic_v2` version has no matching Release.
 6. Wait for the build to finish.
 7. Download the generated `.deb` files from the matching GitHub Release.
 
-Use `linux-cachyos-rc`, `generic_v2`, `upstream-default`, and `upstream` for
-the current headless Ivy Bridge-class KVM guest. `upstream-default` preserves
-the selected official variant's profile; scheduler overrides are for advanced
-testing.
+Use `linux-cachyos-rc`, `generic_v2`, and `upstream-default` for the current
+headless Ivy Bridge-class KVM guest. `upstream-default` preserves the selected
+official variant's profile; scheduler overrides are for advanced testing.
 
 ## CNB Cloud Native Build
 
@@ -131,8 +125,8 @@ and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
 ### Ten-day aggressive x64v2 check
 
 The scheduled workflow is tailored to this repository's target server:
-`linux-cachyos-rc`, `generic_v2` (`x64v2`), `upstream-default`, and `upstream`.
-GitHub starts a lightweight daily timer only to compare `CNB_AGGRESSIVE_V2_LAST_CHECK`; it
+`linux-cachyos-rc`, `generic_v2` (`x64v2`), and `upstream-default`. GitHub starts
+a lightweight daily timer only to compare `CNB_AGGRESSIVE_V2_LAST_CHECK`; it
 does not clone upstream or start CNB until ten full days have elapsed. At that
 point it checks the current RC `pkgver/pkgrel`, records the timestamp in that
 Actions variable, and starts CNB only when the corresponding Release is absent.
