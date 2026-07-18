@@ -47,6 +47,7 @@ variant for testing.
 5. Choose the desired inputs:
    - `runner`: GitHub-hosted or Blacksmith runner size.
    - `kernel_variant`: CachyOS package variant to build.
+   - `cpu_target`: minimum CPU baseline, `generic_v2` by default.
    - `cpu_scheduler`: scheduler/config flavor.
    - `run_qemu_smoke_test`: whether to boot-test the built kernel in QEMU.
    - `publish_release`: whether to upload the final packages to a GitHub
@@ -100,6 +101,16 @@ Supported values:
 - `eevdf`
 
 The default is `cachyos`.
+
+### `cpu_target`
+
+Supported values:
+
+- `generic_v2`: x86-64-v2 baseline, suitable for the target VM.
+- `generic`: older x86-64 baseline with broader compatibility.
+
+The workflow deliberately does not expose `native`: a GitHub-hosted build would
+optimize for the runner CPU, not the server where the kernel will run.
 
 ### `run_qemu_smoke_test`
 

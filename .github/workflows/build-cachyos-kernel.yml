@@ -25,6 +25,14 @@ on:
           - linux-cachyos-bore
           - linux-cachyos-eevdf
           - linux-cachyos-lts
+      cpu_target:
+        description: "Minimum x86-64 CPU baseline for the kernel"
+        required: true
+        default: "generic_v2"
+        type: choice
+        options:
+          - generic_v2
+          - generic
       cpu_scheduler:
         description: "CachyOS scheduler/config flavor"
         required: true
@@ -68,6 +76,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
   KERNEL_VARIANT: ${{ inputs.kernel_variant || (github.event_name == 'schedule' && 'linux-cachyos-server') || 'linux-cachyos' }}
   CPU_SCHEDULER: ${{ inputs.cpu_scheduler || (github.event_name == 'schedule' && 'eevdf') || 'cachyos' }}
+  CPU_TARGET: ${{ inputs.cpu_target || 'generic_v2' }}
   RUN_QEMU_SMOKE_TEST: ${{ inputs.run_qemu_smoke_test || github.event_name == 'schedule' || false }}
 
 jobs:
@@ -92,7 +101,7 @@ jobs:
           git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git upstream
           cd "upstream/${KERNEL_VARIANT}"
           export _cpusched="${CPU_SCHEDULER}"
-          export _processor_opt=generic_v2
+          export _processor_opt="${CPU_TARGET}"
           export _use_llvm_lto=none
           export _use_gcc_suffix=no
           export _build_zfs=no
@@ -178,7 +187,7 @@ jobs:
 
           cd "build/linux-cachyos-packaging/${KERNEL_VARIANT}"
           export _cpusched="${CPU_SCHEDULER}"
-          export _processor_opt=generic_v2
+          export _processor_opt="${CPU_TARGET}"
           export _use_llvm_lto=none
           export _use_gcc_suffix=no
           export _build_zfs=no
@@ -241,7 +250,11 @@ jobs:
             MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
             cfg -d "${cpu_opt}"
           done
-          cfg --set-val X86_64_VERSION 2
+          if [ "${CPU_TARGET}" = "generic_v2" ]; then
+            cfg --set-val X86_64_VERSION 2
+          else
+            cfg --set-val X86_64_VERSION 1
+          fi
           cfg -e HZ_300 --set-val HZ 300
           cfg -e PREEMPT_DYNAMIC
           cfg -d PREEMPT
@@ -493,6 +506,7 @@ jobs:
             echo "Version: ${{ steps.cachyos.outputs.pkgver }}-${{ github.run_number }}"
             echo "Variant: ${KERNEL_VARIANT}"
             echo "Scheduler: ${CPU_SCHEDULER}"
+            echo "CPU target: ${CPU_TARGET}"
             echo "Built at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo
             sha256sum artifacts/*.deb
