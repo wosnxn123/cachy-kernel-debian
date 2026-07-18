@@ -67,7 +67,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cachyos-kernel-${{ github.ref }}
+  group: cachyos-kernel-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
