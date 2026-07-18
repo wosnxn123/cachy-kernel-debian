@@ -53,6 +53,14 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 
 进入 GitHub 的 **Actions**，选择 **Build CachyOS Kernel Debian Packages**，Branch 选择 `main`，然后运行。手动运行也会构建完整的六项矩阵。
 
+如果只想构建一个自定义组合，选择 **Build Custom CachyOS Kernel Debian Package**。这个独立工作流可以选择：
+
+- `kernel_variant`：CachyOS 官方仓库当前提供的 default、server、RC、LTS、EEVDF、BORE、BMQ、hardened、RT-BORE 和 Deckify 变体；
+- `cpu_target`：`generic`、`generic_v2` 或 `generic_v3`，产物分别标记为 `x64v1`、`x64v2`、`x64v3`；
+- `cpu_scheduler`：使用所选变体的 `upstream-default`，或者手动覆盖为指定调度器。
+
+推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile。手动混搭调度器属于高级测试用途。工作流会应用所选官方 `PKGBUILD` 列出的调度器补丁，然后复用相同的 Debian 打包、校验、Artifact、Release 和可选 QEMU 启动测试流程。这个手动工作流不会影响每天运行的稳定版/RC 六项自动矩阵。
+
 推荐 runner：`ubuntu-24.04`。Blacksmith runner 只有在你的 GitHub 组织已启用对应集成时才能使用。
 
 构建成功后，在对应 Release 或 Workflow Artifact 下载普通的 image 和 headers 包，不要下载 `-dbg` 包：
@@ -73,5 +81,6 @@ reboot
 
 - [English README](README.md)
 - [GitHub Actions workflow](.github/workflows/build-cachyos-kernel.yml)
+- [Custom manual build workflow](.github/workflows/build-cachyos-kernel-custom.yml)
 - [CachyOS kernel packaging](https://github.com/CachyOS/linux-cachyos)
 - [CachyOS kernel source releases](https://github.com/CachyOS/linux/releases)

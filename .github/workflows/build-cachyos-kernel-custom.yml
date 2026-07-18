@@ -1,0 +1,91 @@
+name: Build Custom CachyOS Kernel Debian Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner to use for the kernel build"
+        required: true
+        default: "blacksmith-16vcpu-ubuntu-2404"
+        type: choice
+        options:
+          - blacksmith-8vcpu-ubuntu-2404
+          - blacksmith-16vcpu-ubuntu-2404
+          - blacksmith-32vcpu-ubuntu-2404
+          - ubuntu-24.04
+      kernel_variant:
+        description: "Official CachyOS packaging variant"
+        required: true
+        default: "linux-cachyos"
+        type: choice
+        options:
+          - linux-cachyos
+          - linux-cachyos-server
+          - linux-cachyos-rc
+          - linux-cachyos-lts
+          - linux-cachyos-eevdf
+          - linux-cachyos-bore
+          - linux-cachyos-bmq
+          - linux-cachyos-hardened
+          - linux-cachyos-rt-bore
+          - linux-cachyos-deckify
+      cpu_target:
+        description: "Minimum x86-64 CPU baseline"
+        required: true
+        default: "generic_v2"
+        type: choice
+        options:
+          - generic
+          - generic_v2
+          - generic_v3
+      cpu_scheduler:
+        description: "Scheduler override; upstream-default uses the selected variant's default"
+        required: true
+        default: "upstream-default"
+        type: choice
+        options:
+          - upstream-default
+          - cachyos
+          - eevdf
+          - bore
+          - bmq
+          - hardened
+          - rt
+          - rt-bore
+      run_qemu_smoke_test:
+        description: "Boot the built kernel with a tiny initramfs under QEMU"
+        required: true
+        default: true
+        type: boolean
+      publish_release:
+        description: "Create/update a GitHub Release and upload the .deb files"
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag to create/update. Leave blank to auto-generate one."
+        required: false
+        default: ""
+        type: string
+      mark_latest:
+        description: "Mark the created/updated release as the latest release"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-custom:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-cachyos-kernel.yml
+    with:
+      runner: ${{ inputs.runner }}
+      run_qemu_smoke_test: ${{ inputs.run_qemu_smoke_test }}
+      publish_release: ${{ inputs.publish_release }}
+      release_tag: ${{ inputs.release_tag }}
+      mark_latest: ${{ inputs.mark_latest }}
+      build_matrix: >-
+        {"include":[{"track":"custom","profile":"custom","kernel_variant":"${{ inputs.kernel_variant }}","cpu_scheduler":"${{ inputs.cpu_scheduler }}","cpu_target":"${{ inputs.cpu_target }}","cpu_level":${{ inputs.cpu_target == 'generic' && 1 || inputs.cpu_target == 'generic_v2' && 2 || 3 }}}]}

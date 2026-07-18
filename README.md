@@ -54,6 +54,10 @@ automatically.
 Manual runs are started from the GitHub Actions tab with the `workflow_dispatch`
 trigger and run the same six-build matrix.
 
+A separate **Build Custom CachyOS Kernel Debian Package** workflow builds one
+manually selected upstream variant, CPU baseline, and scheduler. It does not
+change or replace the scheduled stable/RC matrix.
+
 ## Manual Usage
 
 1. Open the repository on GitHub.
@@ -72,6 +76,24 @@ trigger and run the same six-build matrix.
 
 Kernel builds are large and slow. A full run can take several hours and uses a
 significant amount of GitHub-hosted runner disk space.
+
+### Custom Manual Build
+
+Select **Build Custom CachyOS Kernel Debian Package** in the Actions tab when
+only one customized package is required. Its additional inputs are:
+
+- `kernel_variant`: any current official `CachyOS/linux-cachyos` packaging
+  variant, including the default, server, RC, LTS, EEVDF, BORE, BMQ, hardened,
+  RT-BORE, and Deckify variants.
+- `cpu_target`: `generic`, `generic_v2`, or `generic_v3`, recorded as `x64v1`,
+  `x64v2`, or `x64v3` in the resulting kernel and package metadata.
+- `cpu_scheduler`: `upstream-default` or an explicit CachyOS scheduler. The
+  upstream default is recommended because it preserves the selected variant's
+  intended combination. Explicit overrides are intended for advanced testing.
+
+The custom workflow applies scheduler patches listed by the selected official
+`PKGBUILD`, then uses the same Debian packaging, validation, artifact, Release,
+and optional QEMU test path as the scheduled workflow.
 
 ## Available Build Inputs
 
@@ -240,6 +262,7 @@ bootloader if the custom kernel does not work on your hardware.
 
 ```text
 .github/workflows/build-cachyos-kernel.yml
+.github/workflows/build-cachyos-kernel-custom.yml
 README.md
 ```
 
