@@ -164,7 +164,7 @@ jobs:
           set -euo pipefail
           basic_auth="$(printf 'cnb:%s' "${CNB_TOKEN}" | base64 -w 0)"
           git -c "http.extraHeader=Authorization: Basic ${basic_auth}" \
-            push "https://cnb.cool/${CNB_REPO}" \
+            push --force "https://cnb.cool/${CNB_REPO}" \
             "${GITHUB_SHA}:refs/heads/main"
 
   dispatch:
