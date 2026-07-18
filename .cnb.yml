@@ -1,0 +1,11 @@
+main:
+  api_trigger_kernel:
+    - name: build-cachyos-debian
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 32
+      docker:
+        build: .cnb/Dockerfile
+      stages:
+        - name: Build, validate, and publish kernel packages
+          script: bash .cnb/build-kernel.sh
