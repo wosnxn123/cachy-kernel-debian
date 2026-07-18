@@ -101,6 +101,45 @@ The custom workflow runs the selected official `PKGBUILD` preparation logic,
 then uses the same Debian packaging, validation, artifact, Release, and optional
 QEMU test path as the scheduled workflow.
 
+## CNB Cloud Native Build
+
+The optional **Build CachyOS Kernel on CNB** workflow keeps GitHub Actions as
+the control plane while moving compilation to CNB Cloud Native Build. It is a
+separate path and does not replace the existing GitHub/Blacksmith workflows.
+
+The bridge works as follows:
+
+1. GitHub pushes the exact workflow commit to the configured CNB repository.
+2. GitHub calls CNB's StartBuild API with `api_trigger_kernel`.
+3. CNB compiles in a 32-vCPU amd64 container and runs package validation plus
+   the optional QEMU boot test.
+4. CNB publishes the `.deb` files and `BUILD-MANIFEST.txt` directly to the
+   matching GitHub Release.
+5. GitHub polls CNB's build-status API and links the CNB log in the job summary.
+
+CNB builds can run one selected combination, all aggressive baselines, all
+stable baselines, or all six combinations. GitHub limits dispatch to two CNB
+builds at a time. A six-build run still consumes substantial CNB core-hours;
+start with `single`, `aggressive`, and `generic_v2` when validating the setup.
+
+### CNB Setup
+
+1. Create an empty CNB repository. The default expected path is
+   `Snowflake-2026/cachy-kernel-debian`.
+2. Create a CNB access token that can write repository code and has
+   `repo-cnb-trigger:rw` permission.
+3. Add that token to the GitHub repository as the Actions secret `CNB_TOKEN`.
+4. If a different CNB path is used, create the GitHub Actions variable
+   `CNB_REPO` with the value `organization/repository`.
+5. Run **Build CachyOS Kernel on CNB** from the GitHub Actions tab.
+
+The GitHub job token is passed only to the triggered CNB build so it can create
+the Release. It remains valid while the GitHub dispatcher waits and expires
+after that job; no permanent GitHub credential is stored in CNB. The CNB path
+publishes GitHub Releases rather than GitHub Workflow Artifacts. CNB API details
+are documented in [StartBuild](https://api.cnb.cool/#/operations/StartBuild)
+and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
+
 ## Available Build Inputs
 
 ### `runner`
@@ -268,10 +307,15 @@ bootloader if the custom kernel does not work on your hardware.
 ## Repository Layout
 
 ```text
+.cnb.yml
+.cnb/Dockerfile
+.cnb/build-kernel.sh
+.github/workflows/build-cachyos-kernel-cnb.yml
 .github/workflows/build-cachyos-kernel.yml
 .github/workflows/build-cachyos-kernel-custom.yml
 README.md
 ```
 
-The workflow is self-contained and fetches the CachyOS kernel sources during the
-GitHub Actions run.
+Both build paths fetch CachyOS kernel sources at build time. The CNB path mirrors
+the controlling GitHub commit before dispatch so CNB executes the same checked-in
+configuration.

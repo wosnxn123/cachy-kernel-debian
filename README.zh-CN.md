@@ -62,6 +62,30 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 
 推荐 runner：`ubuntu-24.04`。Blacksmith runner 只有在你的 GitHub 组织已启用对应集成时才能使用。
 
+## CNB 云原生构建
+
+新增的 **Build CachyOS Kernel on CNB** 工作流以 GitHub Actions 负责调度和显示状态，把真正吃 CPU 的编译放到 CNB 云原生构建中。它是一条独立路径，不替换现有 GitHub/Blacksmith 工作流。
+
+执行过程如下：
+
+1. GitHub 将本次运行的准确 Commit 推送到指定 CNB 仓库；
+2. GitHub 通过 StartBuild API 触发 `api_trigger_kernel`；
+3. CNB 使用 32 vCPU amd64 容器编译，并执行包校验及可选 QEMU 启动测试；
+4. CNB 将 `.deb` 与 `BUILD-MANIFEST.txt` 直接上传到对应 GitHub Release；
+5. GitHub 按构建号轮询 CNB 状态，并在任务摘要中给出 CNB 实时日志链接。
+
+CNB 工作流支持只构建一个组合、RC 激进版三个基线、稳定版三个基线或完整六项。GitHub 同时最多派发两个 CNB 编译。完整六项会消耗很多 CNB 构建核时，首次验证应选择 `single`、`aggressive` 和 `generic_v2`。
+
+### 接入步骤
+
+1. 在 CNB 创建空仓库；默认路径为 `Snowflake-2026/cachy-kernel-debian`；
+2. 创建可写代码仓库且包含 `repo-cnb-trigger:rw` 权限的 CNB 访问令牌；
+3. 在 GitHub 仓库 Actions Secrets 中添加 `CNB_TOKEN`；
+4. 如果 CNB 仓库不是默认路径，在 GitHub Actions Variables 中添加 `CNB_REPO`，值为 `组织/仓库`；
+5. 在 GitHub Actions 运行 **Build CachyOS Kernel on CNB**。
+
+GitHub 的临时任务令牌只传给本次 CNB 构建，用于创建 Release；GitHub 调度任务结束后令牌自动失效，因此 CNB 不需要永久保存 GitHub 凭据。CNB 路径发布 GitHub Release，不生成 GitHub Workflow Artifact；原有 GitHub/Blacksmith 路径仍会生成 Artifact。相关官方文档：[StartBuild API](https://api.cnb.cool/#/operations/StartBuild)、[CNB 构建节点](https://docs.cnb.cool/zh/build/build-node.html)。
+
 构建成功后，在对应 Release 或 Workflow Artifact 下载普通的 image 和 headers 包，不要下载 `-dbg` 包：
 
 ```bash
@@ -81,5 +105,7 @@ reboot
 - [English README](README.md)
 - [GitHub Actions workflow](.github/workflows/build-cachyos-kernel.yml)
 - [Custom manual build workflow](.github/workflows/build-cachyos-kernel-custom.yml)
+- [CNB dispatcher workflow](.github/workflows/build-cachyos-kernel-cnb.yml)
+- [CNB pipeline](.cnb.yml)
 - [CachyOS kernel packaging](https://github.com/CachyOS/linux-cachyos)
 - [CachyOS kernel source releases](https://github.com/CachyOS/linux/releases)
