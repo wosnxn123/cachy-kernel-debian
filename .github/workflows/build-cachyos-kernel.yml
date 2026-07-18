@@ -20,6 +20,8 @@ on:
         type: choice
         options:
           - linux-cachyos
+          - linux-cachyos-server
+          - linux-cachyos-rc
           - linux-cachyos-bore
           - linux-cachyos-eevdf
           - linux-cachyos-lts
@@ -127,7 +129,7 @@ jobs:
 
           cd "build/linux-cachyos-packaging/${KERNEL_VARIANT}"
           export _cpusched="${CPU_SCHEDULER}"
-          export _processor_opt=generic
+          export _processor_opt=generic_v2
           export _use_llvm_lto=none
           export _use_gcc_suffix=no
           export _build_zfs=no
@@ -135,10 +137,10 @@ jobs:
           export _build_r8125=no
           export _build_debug=no
           export _localmodcfg=no
-          export _cachy_config=yes
-          export _HZ_ticks=1000
+          export _cachy_config=no
+          export _HZ_ticks=300
           export _tickrate=idle
-          export _preempt=full
+          export _preempt=lazy
           export _hugepage=madvise
 
           source PKGBUILD
@@ -159,7 +161,7 @@ jobs:
           cp "linux-cachyos-packaging/${KERNEL_VARIANT}/config" "${_srcname}/.config"
           echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}" >> "${GITHUB_OUTPUT}"
 
-      - name: Configure kernel for a Debian desktop build
+      - name: Configure kernel for a Debian server build
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
         run: |
           set -euxo pipefail
@@ -168,7 +170,7 @@ jobs:
             scripts/config "$@" || true
           }
 
-          cfg --set-str LOCALVERSION "-cachyos-debian"
+          cfg --set-str LOCALVERSION "-cachyos-server-debian"
           cfg --set-str SYSTEM_TRUSTED_KEYS ""
           cfg --set-str SYSTEM_REVOCATION_KEYS ""
           cfg -d DEBUG_INFO
@@ -180,22 +182,25 @@ jobs:
           cfg -e KALLSYMS_ALL
           cfg -e IKCONFIG
           cfg -e IKCONFIG_PROC
-          cfg -e CACHY
+          cfg -d CACHY
           cfg -e GENERIC_CPU
           for cpu_opt in \
-            GENERIC_CPU2 GENERIC_CPU3 GENERIC_CPU4 MNATIVE MPSC MATOM MCORE2 \
+            GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
             MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
             MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
             MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
             MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
             cfg -d "${cpu_opt}"
           done
-          cfg --set-val X86_64_VERSION 1
-          cfg -e HZ_1000 --set-val HZ 1000
+          cfg --set-val X86_64_VERSION 2
+          cfg -e HZ_300 --set-val HZ 300
           cfg -e PREEMPT_DYNAMIC
-          cfg -e PREEMPT
+          cfg -d PREEMPT
+          cfg -e PREEMPT_LAZY
           cfg -e NO_HZ_IDLE
           cfg -d NO_HZ_FULL
+          cfg -d TRANSPARENT_HUGEPAGE_ALWAYS
+          cfg -e TRANSPARENT_HUGEPAGE_MADVISE
           cfg -e HIGH_RES_TIMERS
           cfg -e CPU_FREQ
           cfg -e CPU_FREQ_GOV_SCHEDUTIL
