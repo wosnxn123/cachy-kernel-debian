@@ -553,7 +553,7 @@ jobs:
               release_tag="cachyos-debian-${BUILD_PROFILE}-${PKGVER}-${RUN_NUMBER}-x64v${CPU_LEVEL}"
             fi
           else
-            release_tag="${release_tag}-x64v${CPU_LEVEL}"
+            release_tag="${release_tag}-${BUILD_PROFILE}-x64v${CPU_LEVEL}"
           fi
 
           {
