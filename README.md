@@ -28,11 +28,15 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-The workflow is manual-only.
+The workflow supports both manual and scheduled runs. A scheduled run checks the
+upstream CachyOS server `PKGBUILD` once per day and starts a build only when its
+`pkgver/pkgrel` has not already been published by this repository. Scheduled
+builds use the stable `linux-cachyos-server` variant and publish a versioned
+Release automatically.
 
-It does not run on pushes, pull requests, tags, or a schedule. A repository
-maintainer must explicitly start it from the GitHub Actions tab with the
-`workflow_dispatch` trigger.
+Manual runs are started from the GitHub Actions tab with the `workflow_dispatch`
+trigger. They can select the stable server variant or the latest CachyOS RC
+variant for testing.
 
 ## Manual Usage
 
@@ -79,6 +83,8 @@ the `ubuntu-24.04` fallback runner.
 Supported values:
 
 - `linux-cachyos`
+- `linux-cachyos-server`
+- `linux-cachyos-rc`
 - `linux-cachyos-bore`
 - `linux-cachyos-eevdf`
 - `linux-cachyos-lts`
