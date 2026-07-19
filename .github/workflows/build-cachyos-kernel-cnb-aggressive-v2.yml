@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 22 * * *"
   workflow_dispatch:
+    inputs:
+      skip_debug_packages:
+        description: "Skip linux-image-*-dbg packages (recommended; much smaller/faster)"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   actions: write
@@ -83,4 +89,5 @@ jobs:
       run_qemu_smoke_test: true
       publish_release: true
       mark_latest: false
+      skip_debug_packages: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_debug_packages || true }}
     secrets: inherit

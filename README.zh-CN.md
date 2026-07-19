@@ -32,9 +32,9 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 
 ## 构建触发
 
-常规手动构建优先使用 **Build CachyOS Kernel on CNB**。旧的 GitHub/Blacksmith 工作流已恢复为仅手动触发的备用项（不会自动构建），每次只构建一个组合。
+常规手动构建使用 **Build CachyOS Kernel on CNB**，每次只构建一个组合。旧的一次构建多个组合的 GitHub/Blacksmith 工作流已删除。
 
-**Check and build aggressive x64v2 on CNB** 是唯一的自动工作流：每十天检查一次上游 RC 版本，只有对应的 `aggressive / generic_v2` Release 不存在时才触发 CNB 编译。
+**Check and build aggressive x64v2 on CNB** 是唯一的自动工作流：每十天检查一次上游 RC 版本，只有对应的 `aggressive / generic_v2` Release 不存在时才触发 CNB 编译。手动运行该工作流时可选择是否跳过 `-dbg`（默认跳过）。
 
 ## 手动构建
 
