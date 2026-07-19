@@ -1,4 +1,4 @@
-name: Build CachyOS Kernel Debian Packages
+﻿name: Reusable CachyOS Kernel Build
 
 on:
   workflow_call:

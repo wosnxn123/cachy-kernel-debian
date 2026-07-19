@@ -1,4 +1,4 @@
-name: Build Custom CachyOS Kernel Debian Package
+﻿name: Build Custom CachyOS Kernel Debian Package
 
 on:
   workflow_dispatch:
@@ -80,7 +80,7 @@ jobs:
   build-custom:
     permissions:
       contents: write
-    uses: ./.github/workflows/build-cachyos-kernel.yml
+    uses: ./.github/workflows/reusable-cachyos-kernel-build.yml
     with:
       runner: ${{ inputs.runner }}
       run_qemu_smoke_test: ${{ inputs.run_qemu_smoke_test }}
