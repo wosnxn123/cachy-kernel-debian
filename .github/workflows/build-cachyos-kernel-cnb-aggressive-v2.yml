@@ -63,15 +63,25 @@ jobs:
           source PKGBUILD
 
           release_tag="cachyos-debian-aggressive-${pkgver}-${pkgrel}-x64v2"
+          echo "Newest upstream RC maps to release tag: ${release_tag}"
           if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release already exists; CNB build not required."
             echo "build=false" >> "${GITHUB_OUTPUT}"
           else
+            echo "Release missing; queue CNB aggressive x64v2 build."
             echo "build=true" >> "${GITHUB_OUTPUT}"
           fi
 
-          gh variable set CNB_AGGRESSIVE_V2_LAST_CHECK \
+          # GITHUB_TOKEN may lack permission to write Actions variables on some
+          # repos/org policies. Cadence tracking is best-effort; the Release
+          # existence check above remains the real build gate.
+          if gh variable set CNB_AGGRESSIVE_V2_LAST_CHECK \
             --repo "${GITHUB_REPOSITORY}" \
-            --body "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --body "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; then
+            echo "Updated CNB_AGGRESSIVE_V2_LAST_CHECK."
+          else
+            echo "::warning::Could not update CNB_AGGRESSIVE_V2_LAST_CHECK with GITHUB_TOKEN (often HTTP 403). Manual runs still work; scheduled checks may re-evaluate daily until a PAT/variable permission is available."
+          fi
 
       - name: Skip until the next ten-day check
         if: ${{ steps.cadence.outputs.due != 'true' }}
