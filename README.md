@@ -121,7 +121,7 @@ commit to CNB using `CNB_TOKEN`; CNB receives only the current GitHub job token
 with `contents: write` permission so it can create a Release and upload `.deb`
 assets. That temporary token expires when the dispatcher job ends or is
 cancelled, and no permanent GitHub credential is stored in CNB. The CNB path
-publishes GitHub Releases rather than GitHub Workflow Artifacts. CNB API details
+publishes GitHub Releases and also mirrors packages into the workflow run Artifacts. CNB API details
 are documented in [StartBuild](https://api.cnb.cool/#/operations/StartBuild)
 and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
 
@@ -237,12 +237,19 @@ The workflow performs package validation before uploading artifacts:
 
 ## Release Assets
 
-Artifacts are always uploaded to the workflow run.
+CNB builds do both of the following when successful:
 
-To publish the generated `.deb` packages to GitHub Releases, run the workflow
-manually with `publish_release` enabled. You can either provide a `release_tag`
-or leave it blank and let the workflow generate one from the kernel variant,
-kernel version, and workflow run number.
+1. Upload packages to a GitHub Release when `publish_release` is enabled.
+2. Always mirror the same `.deb` files and `BUILD-MANIFEST.txt` into the GitHub
+   Actions run Artifacts section (14-day retention).
+
+Internally CNB first creates a temporary draft release named
+`cnb-run-<github_run_id>` so the Actions job can download the packages. That
+draft is deleted after Artifacts are uploaded and is not meant for end users.
+
+To publish packages to a normal GitHub Release, keep `publish_release` enabled
+(the CNB form default). You can either provide a `release_tag` or leave it blank
+and let the workflow generate one from the kernel track, version, and CPU level.
 
 The release publisher uses the workflow `GITHUB_TOKEN`, so the repository must
 allow GitHub Actions to write repository contents. This workflow already declares
@@ -250,8 +257,9 @@ allow GitHub Actions to write repository contents. This workflow already declare
 
 ## Installing Packages
 
-Download the generated `.deb` files from the workflow artifacts, then install the
-image and headers on a Debian-based system:
+Download the generated `.deb` files from the matching GitHub Release or from the
+workflow run Artifacts, then install the image and headers on a Debian-based
+system:
 
 ```bash
 sudo apt install ./linux-image-*.deb ./linux-headers-*.deb

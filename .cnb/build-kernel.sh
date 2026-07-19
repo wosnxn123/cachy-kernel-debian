@@ -408,6 +408,37 @@ fi
   sha256sum artifacts/*.deb
 } > artifacts/BUILD-MANIFEST.txt
 
+# Temporary draft release used only so GitHub Actions can pull packages as
+# workflow Artifacts. The Actions job deletes this tag after upload.
+if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+  artifact_tag="cnb-run-${GITHUB_RUN_ID}"
+  artifact_title="CNB temporary artifacts for GitHub run ${GITHUB_RUN_ID}"
+  artifact_notes="$(cat <<EOF
+Temporary draft release for GitHub Actions Artifacts transfer.
+
+GitHub Actions run: ${GITHUB_RUN_ID}
+Track: ${BUILD_TRACK}
+Variant: ${KERNEL_VARIANT}
+CPU: x86-64-v${CPU_LEVEL}
+This draft is deleted after the workflow uploads Artifacts.
+EOF
+)"
+  if gh release view "${artifact_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+    gh release upload "${artifact_tag}" artifacts/*.deb artifacts/BUILD-MANIFEST.txt \
+      --repo "${GITHUB_REPOSITORY}" --clobber
+  else
+    gh release create "${artifact_tag}" artifacts/*.deb artifacts/BUILD-MANIFEST.txt \
+      --repo "${GITHUB_REPOSITORY}" \
+      --target "${GITHUB_SHA}" \
+      --draft \
+      --title "${artifact_title}" \
+      --notes "${artifact_notes}" \
+      --latest=false
+  fi
+  echo "Temporary artifact handoff release: ${artifact_tag}"
+  echo "##[set-output artifact_tag=${artifact_tag}]"
+fi
+
 if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
   if [ -n "${RELEASE_TAG:-}" ]; then

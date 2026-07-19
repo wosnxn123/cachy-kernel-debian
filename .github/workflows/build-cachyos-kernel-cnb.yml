@@ -308,7 +308,7 @@ jobs:
             status="$(jq -r '.status // "unknown"' <<<"${response}")"
             printf 'CNB %s status: %s\n' "${CNB_SN}" "${status}"
             case "${status,,}" in
-              success|succeeded|passed|pass|通过)
+              success|succeeded|passed|pass)
                 {
                   echo
                   echo "CNB result: **${status}**"
@@ -316,7 +316,7 @@ jobs:
                 } >> "${GITHUB_STEP_SUMMARY}"
                 exit 0
                 ;;
-              failure|failed|error|errored|cancelled|canceled|timeout|timed_out|失败|取消|超时)
+              failure|failed|error|errored|cancelled|canceled|timeout|timed_out)
                 echo "CNB build failed with status ${status}: ${CNB_LOG_URL}" >&2
                 exit 1
                 ;;
@@ -325,3 +325,69 @@ jobs:
           done
           echo "Timed out waiting for CNB build: ${CNB_LOG_URL}" >&2
           exit 1
+
+      - name: Download packages for workflow Artifacts
+        id: packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_TAG: cnb-run-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          echo "Waiting for temporary CNB handoff release: ${ARTIFACT_TAG}"
+          ready=0
+          for _ in $(seq 1 36); do
+            if gh release view "${ARTIFACT_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "${ready}" -ne 1 ]; then
+            echo "Temporary handoff release ${ARTIFACT_TAG} was not found." >&2
+            echo "CNB should create a draft release named cnb-run-<run_id> after packaging." >&2
+            exit 1
+          fi
+          gh release download "${ARTIFACT_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir artifacts \
+            --pattern '*.deb' \
+            --pattern 'BUILD-MANIFEST.txt' \
+            --clobber
+          ls -lh artifacts
+          test -n "$(find artifacts -maxdepth 1 -type f -name '*.deb' | head -n1)"
+          echo "artifact_tag=${ARTIFACT_TAG}" >> "${GITHUB_OUTPUT}"
+          {
+            echo
+            echo "### Workflow Artifacts"
+            echo
+            echo "- Temporary handoff release: \`${ARTIFACT_TAG}\` (will be deleted after upload)"
+            echo "- Packages will appear under this workflow run's Artifacts section"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cachyos-debian-${{ matrix.track }}-${{ matrix.kernel_variant }}-${{ matrix.cpu_scheduler }}-x64v${{ matrix.cpu_level }}-${{ github.run_number }}
+          path: |
+            artifacts/*.deb
+            artifacts/BUILD-MANIFEST.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary handoff release
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_TAG: cnb-run-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if gh release view "${ARTIFACT_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release delete "${ARTIFACT_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --yes \
+              --cleanup-tag
+            echo "Deleted temporary handoff release ${ARTIFACT_TAG}"
+          else
+            echo "Temporary handoff release ${ARTIFACT_TAG} already gone"
+          fi
