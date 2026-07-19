@@ -6,27 +6,15 @@
 
 [中文文档](README.zh-CN.md) | English
 
-This repository contains workflows for building selected [CachyOS](https://github.com/CachyOS/linux-cachyos) Linux kernel variants as installable Debian `.deb` packages.
+This repository builds selected [CachyOS](https://github.com/CachyOS/linux-cachyos) Linux kernel variants as installable Debian `.deb` packages.
 
-It is intended for **Debian-based systems** where you want a CachyOS-flavored kernel without maintaining the full local build toolchain. That includes desktop and server machines. This is **not** a headless-only project, and it is **not** an official CachyOS project.
+It is for Debian-based systems where you want a CachyOS-flavored kernel without keeping a full local build toolchain. Desktop and server installs are both in scope.
 
-Compared with a plain local build, this fork mainly adds CI/CNB automation around the same idea as the upstream packaging repo: fetch CachyOS packaging metadata, build packages, validate, and publish artifacts/releases.
+This project is not affiliated with CachyOS. Kernel sources and packaging metadata are fetched from upstream CachyOS repositories at build time.
 
-Primary compile path: **CNB Cloud Native Build** (32 vCPU), triggered and reported by GitHub Actions. GitHub/Blacksmith remains a manual fallback.
+Primary compile path: **CNB Cloud Native Build** (32 vCPU), triggered and reported by GitHub Actions. GitHub/Blacksmith is a manual fallback.
 
-## Relationship to the original repo
-
-Upstream packaging workflow project: [Deadly-Signal/cachy-kernel-debian](https://github.com/Deadly-Signal/cachy-kernel-debian)
-
-| Topic | Original intent | This fork |
-| --- | --- | --- |
-| Goal | Build CachyOS kernels as Debian packages | Same |
-| Target users | Debian-based systems (original docs lean desktop-friendly) | Same broad target: Debian-based systems |
-| Build engine | GitHub Actions / Blacksmith | CNB first, GitHub/Blacksmith fallback |
-| Config pass after Cachy prepare | Desktop-oriented compatibility options | Currently a fixed **Debian/KVM-friendly** compatibility pass (`server-kvm`) for broader VirtIO/server boot coverage |
-| Variants / schedulers | Chosen at build time | Same idea; forms expose more options |
-
-In short: the product is still “CachyOS kernel → `.deb` for Debian-based OS”. The fork changes **how** it is built and slightly **which compatibility knobs** are forced after upstream prepare, not the basic purpose.
+Based on [Deadly-Signal/cachy-kernel-debian](https://github.com/Deadly-Signal/cachy-kernel-debian).
 
 ## Quick start
 
@@ -44,7 +32,7 @@ sudo reboot
 uname -r
 ```
 
-Optional: if the Release also ships `linux-libc-dev_*.deb` and you want matching userspace headers, install it too.
+If the Release also ships `linux-libc-dev_*.deb` and you want matching userspace headers, install it too.
 
 Keep a known-good distribution kernel installed so the bootloader can fall back.
 
@@ -52,24 +40,10 @@ Keep a known-good distribution kernel installed so the bootloader can fall back.
 
 1. Open **Actions**
 2. Run **Build CachyOS Kernel on CNB**
-3. Pick a variant / CPU baseline / scheduler
+3. Choose the inputs you need
 4. After success, download from:
    - GitHub **Release** (when `publish_release=true`)
    - the workflow run **Artifacts** (14-day retention)
-
-Example values used by some maintainers on x86-64-v2 KVM guests:
-
-| Input | Example |
-| --- | --- |
-| `kernel_variant` | `linux-cachyos-rc` |
-| `cpu_target` | `generic_v2` |
-| `cpu_scheduler` | `upstream-default` |
-| `run_qemu_smoke_test` | `true` |
-| `publish_release` | `true` |
-| `skip_debug_packages` | `true` |
-| `mark_latest` | `false` |
-
-These are examples, not a claim that the repository is server-only.
 
 ## Workflows
 
@@ -80,14 +54,12 @@ These are examples, not a claim that the repository is server-only.
 | **Build Custom CachyOS Kernel Debian Package** | GitHub/Blacksmith single-combination fallback | Manual |
 | **Reusable CachyOS Kernel Build** | Internal reusable job for the custom fallback | Not user-facing |
 
-There is no multi-matrix “build many kernels in one click” dispatch entry.
-
 ## What it builds
 
 Each run roughly:
 
 1. Reads the selected official CachyOS packaging variant from [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos)
-2. Runs that variant’s upstream `PKGBUILD` `prepare()` so patches/profile come from upstream
+2. Runs that variant’s upstream `PKGBUILD` `prepare()` so patches and profile come from upstream
 3. Applies this repository’s post-prepare compatibility pass (currently `server-kvm`)
 4. Compiles with the selected x86-64 baseline (`x64v1` / `x64v2` / `x64v3`)
 5. Packages with `bindeb-pkg`
@@ -108,7 +80,7 @@ Typical packages:
 | Layer | Source |
 | --- | --- |
 | Scheduler, LTO/compiler, HZ, tick, preemption, THP, O3, governor, BBR3, KCFI | Selected upstream CachyOS variant (`upstream-default`) or an explicit scheduler override |
-| Extra Debian/KVM compatibility options | Fixed by this repository after upstream prepare |
+| Extra Debian/KVM compatibility options | Applied by this repository after upstream prepare |
 | CPU baseline marker | Selected `generic` / `generic_v2` / `generic_v3` → visible as `x64v1` / `x64v2` / `x64v3` |
 
 `upstream-default` means “do not override the variant’s own scheduler”. For `linux-cachyos-rc`, that is the official RC default profile.
@@ -150,7 +122,7 @@ Example: an Ivy Bridge-class guest such as Xeon E5-2696 v2 is typically a good f
 
 Workflow: **Check and build aggressive x64v2 on CNB**
 
-This is an optional automation for one popular combo, not the definition of the whole repository:
+Optional automation for one common combination:
 
 - variant: `linux-cachyos-rc`
 - CPU: `generic_v2` (`x64v2`)
@@ -184,7 +156,7 @@ How Artifacts are produced:
 3. The job uploads workflow Artifacts
 4. The temporary draft is deleted best-effort
 
-End users should download from the normal Release or the workflow Artifacts page. Ignore temporary `cnb-run-*` drafts if you ever notice one mid-run.
+Download from the normal Release or the workflow Artifacts page. Ignore temporary `cnb-run-*` drafts if you ever notice one mid-run.
 
 ## Install and rollback
 
@@ -197,7 +169,7 @@ uname -r
 
 Before installing, inspect `BUILD-MANIFEST.txt` for version, CPU baseline, scheduler, and checksums.
 
-Always keep a known-good stock kernel installed so the bootloader can recover if the custom kernel misbehaves.
+Keep a known-good stock kernel installed so the bootloader can recover if the custom kernel misbehaves.
 
 ## CNB setup for forks
 
@@ -243,20 +215,18 @@ If CNB is unavailable, use **Build Custom CachyOS Kernel Debian Package**.
 - Uploads workflow Artifacts
 - Can optionally publish a Release
 
-This path is the fallback, not the default.
-
 ## Compatibility notes
 
-The post-prepare pass currently favors common Debian boot/module needs, including items useful on both desktops and virtual machines, such as:
+After upstream prepare, this repository applies a Debian/KVM-friendly compatibility pass. It keeps common boot and module options enabled, for example:
 
 - initramfs boot
 - loadable modules
 - VirtIO / KVM / common block and net drivers
 - common filesystems and networking features including WireGuard
 
-Whether a given package works well still depends on hardware, firmware, bootloader, Secure Boot, DKMS modules, and the distro release.
+Whether a package works well still depends on hardware, firmware, bootloader, Secure Boot, DKMS modules, and the distro release.
 
-A VirtIO-GPU device is optional. Headless guests usually do not need it.
+VirtIO-GPU is optional. Headless guests usually do not need it.
 
 ## Validation
 
@@ -286,7 +256,6 @@ README.zh-CN.md
 
 ## Important notes
 
-- Not affiliated with or endorsed by CachyOS
 - Kernel fitness depends on your hardware, firmware, bootloader, Secure Boot policy, DKMS modules, and distro release
 - Secure Boot environments may require signing or policy changes
 - Out-of-tree modules such as NVIDIA DKMS are not built here
@@ -296,7 +265,7 @@ README.zh-CN.md
 ## Links
 
 - [中文文档](README.zh-CN.md)
-- [Original builder repo](https://github.com/Deadly-Signal/cachy-kernel-debian)
+- [Deadly-Signal/cachy-kernel-debian](https://github.com/Deadly-Signal/cachy-kernel-debian)
 - [CachyOS packaging](https://github.com/CachyOS/linux-cachyos)
 - [CachyOS kernel sources](https://github.com/CachyOS/linux/releases)
 - [CNB StartBuild API](https://api.cnb.cool/#/operations/StartBuild)
