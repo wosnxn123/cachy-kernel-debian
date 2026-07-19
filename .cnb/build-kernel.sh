@@ -410,7 +410,9 @@ fi
 
 if [ "${PUBLISH_RELEASE}" = "true" ]; then
   test -n "${GH_TOKEN:-}"
-  if [ "${BUILD_TRACK}" = "custom" ]; then
+  if [ -n "${RELEASE_TAG:-}" ]; then
+    release_tag="${RELEASE_TAG}"
+  elif [ "${BUILD_TRACK}" = "custom" ]; then
     release_variant="${KERNEL_VARIANT#linux-cachyos-}"
     release_tag="cachyos-debian-custom-${release_variant}-${CPU_SCHEDULER}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   else

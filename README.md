@@ -51,9 +51,10 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-Manual builds run through **Build CachyOS Kernel on CNB** and always build one
-selected combination. The old multi-package GitHub/Blacksmith workflows stay
-removed because they could start several kernel builds at once.
+Manual builds primarily run through **Build CachyOS Kernel on CNB** and always
+build one selected combination. A single-combination GitHub/Blacksmith fallback
+remains available as **Build Custom CachyOS Kernel Debian Package**. The old
+six-at-once multi-matrix dispatch path is no longer offered.
 
 **Check and build aggressive x64v2 on CNB** is the only automatic workflow. It
 checks the upstream RC package once every ten days and builds only when the
@@ -144,6 +145,7 @@ Manual CNB runs choose one combination at a time:
 - `cpu_scheduler`
 - `run_qemu_smoke_test`
 - `publish_release`
+- `release_tag` (optional; blank auto-generates)
 - `skip_debug_packages` (default: skip)
 - `mark_latest`
 

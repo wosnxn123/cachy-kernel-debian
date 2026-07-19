@@ -52,6 +52,11 @@ on:
         required: true
         default: true
         type: boolean
+      release_tag:
+        description: "Release tag to create/update. Leave blank to auto-generate one."
+        required: false
+        default: ""
+        type: string
       mark_latest:
         description: "Mark the created/updated release as the latest release"
         required: true
@@ -84,6 +89,10 @@ on:
         required: false
         default: true
         type: boolean
+      release_tag:
+        required: false
+        default: ""
+        type: string
       mark_latest:
         required: false
         default: false
@@ -204,6 +213,7 @@ jobs:
           GH_JOB_TOKEN: ${{ github.token }}
           RUN_QEMU_SMOKE_TEST: ${{ inputs.run_qemu_smoke_test }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
           MARK_LATEST: ${{ inputs.mark_latest }}
           SKIP_DEBUG_PACKAGES: ${{ inputs.skip_debug_packages }}
         run: |
@@ -221,6 +231,7 @@ jobs:
             --arg track "${{ matrix.track }}" \
             --arg qemu "${RUN_QEMU_SMOKE_TEST}" \
             --arg publish "${PUBLISH_RELEASE}" \
+            --arg release_tag "${RELEASE_TAG}" \
             --arg latest "${MARK_LATEST}" \
             --arg skip_debug "${SKIP_DEBUG_PACKAGES}" \
             --arg github_repository "${GITHUB_REPOSITORY}" \
@@ -244,6 +255,7 @@ jobs:
                 BUILD_TRACK: $track,
                 RUN_QEMU_SMOKE_TEST: $qemu,
                 PUBLISH_RELEASE: $publish,
+                RELEASE_TAG: $release_tag,
                 MARK_LATEST: $latest,
                 SKIP_DEBUG_PACKAGES: $skip_debug,
                 GITHUB_REPOSITORY: $github_repository,
