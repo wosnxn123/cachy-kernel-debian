@@ -8,7 +8,7 @@
 
 This repository builds selected CachyOS Linux variants as installable Debian
 packages for 64-bit Debian server workloads. Compilation runs on CNB Cloud
-Native Build rather than GitHub-hosted or Blacksmith runners.
+Native Build on CNB Cloud Native Build.
 
 The target is a headless Debian/KVM server. The packages include initramfs,
 VirtIO, serial console, networking, storage, KVM, WireGuard, and common
@@ -51,14 +51,9 @@ Expected output includes standard `.deb` packages such as:
 
 ## Workflow Trigger
 
-Primary builds run through **Build CachyOS Kernel on CNB** and always build one
-selected combination. The older GitHub/Blacksmith workflows are restored as
-manual-only fallbacks:
-
-- **Build CachyOS Kernel Debian Packages**
-- **Build Custom CachyOS Kernel Debian Package**
-
-They are not scheduled. Prefer CNB for normal builds.
+Manual builds run through **Build CachyOS Kernel on CNB** and always build one
+selected combination. The old multi-package GitHub/Blacksmith workflows stay
+removed because they could start several kernel builds at once.
 
 **Check and build aggressive x64v2 on CNB** is the only automatic workflow. It
 checks the upstream RC package once every ten days and builds only when the
@@ -80,7 +75,6 @@ latest `aggressive / generic_v2` version has no matching Release.
    - `skip_debug_packages`: skip `linux-image-*-dbg` packages. Default is
      enabled because the dbg package is huge and mostly useful for crash
      debugging.
-   - `release_tag`: optional tag to create/update when publishing a Release.
    - `mark_latest`: whether the Release should be marked as the latest.
 6. Wait for the build to finish.
 7. Download the generated `.deb` files from the matching GitHub Release.
@@ -133,7 +127,9 @@ and [CNB build nodes](https://docs.cnb.cool/en/build/build-node.html).
 ### Ten-day aggressive x64v2 check
 
 The scheduled workflow is tailored to this repository's target server:
-`linux-cachyos-rc`, `generic_v2` (`x64v2`), and `upstream-default`. GitHub starts
+`linux-cachyos-rc`, `generic_v2` (`x64v2`), and `upstream-default`, and defaults
+to skipping `-dbg`. Manual runs of this workflow expose the same
+`skip_debug_packages` checkbox. GitHub starts
 a lightweight daily timer only to compare `CNB_AGGRESSIVE_V2_LAST_CHECK`; it
 does not clone upstream or start CNB until ten full days have elapsed. At that
 point it checks the current RC `pkgver/pkgrel`, records the timestamp in that
@@ -141,35 +137,15 @@ Actions variable, and starts CNB only when the corresponding Release is absent.
 
 ## Available Build Inputs
 
-### `runner`
+Manual CNB runs choose one combination at a time:
 
-Supported values:
-
-- `blacksmith-8vcpu-ubuntu-2404`
-- `blacksmith-16vcpu-ubuntu-2404`
-- `blacksmith-32vcpu-ubuntu-2404`
-- `ubuntu-24.04`
-
-The default is `blacksmith-16vcpu-ubuntu-2404`, which is a good fit for kernel
-compilation because it provides substantially more CPU, memory, and disk space
-than the default GitHub-hosted Ubuntu runner.
-
-Blacksmith runners require the Blacksmith GitHub integration to be installed and
-enabled for the repository's organization. If Blacksmith is not configured, use
-the `ubuntu-24.04` fallback runner.
-
-### Build Matrix
-
-Every run builds these CPU baselines:
-
-- `x64v1` / `generic`: broadest compatibility.
-- `x64v2` / `generic_v2`: requires the x86-64-v2 feature set, including
-  SSSE3, SSE4.1, SSE4.2, POPCNT, CX16, and LAHF/SAHF.
-- `x64v3` / `generic_v3`: requires x86-64-v3 features such as AVX2, BMI1/2,
-  FMA, MOVBE, and F16C.
-
-The workflow deliberately does not use `native`: a GitHub-hosted build would
-optimize for the runner CPU, not the server where the kernel will run.
+- `kernel_variant`
+- `cpu_target` / `x64v1` `x64v2` `x64v3`
+- `cpu_scheduler`
+- `run_qemu_smoke_test`
+- `publish_release`
+- `skip_debug_packages` (default: skip)
+- `mark_latest`
 
 Before installing a package, check the target machine's CPU flags with
 `lscpu`. A machine that lacks the required feature set must not boot that
