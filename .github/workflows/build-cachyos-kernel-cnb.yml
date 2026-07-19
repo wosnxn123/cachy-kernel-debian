@@ -381,13 +381,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_TAG: cnb-run-${{ github.run_id }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # Handoff drafts may not create a durable git tag. Never fail the job on cleanup.
           if gh release view "${ARTIFACT_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release delete "${ARTIFACT_TAG}" \
+            if gh release delete "${ARTIFACT_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
               --yes \
-              --cleanup-tag
-            echo "Deleted temporary handoff release ${ARTIFACT_TAG}"
+              --cleanup-tag; then
+              echo "Deleted temporary handoff release ${ARTIFACT_TAG}"
+            elif gh release delete "${ARTIFACT_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --yes; then
+              echo "Deleted temporary handoff release ${ARTIFACT_TAG} (tag already missing)"
+            else
+              echo "Warning: could not delete temporary handoff release ${ARTIFACT_TAG}" >&2
+            fi
           else
             echo "Temporary handoff release ${ARTIFACT_TAG} already gone"
           fi
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${ARTIFACT_TAG}" >/dev/null 2>&1 || true
