@@ -16,6 +16,12 @@ done
 
 # This Debian builder always applies the repository's server/KVM compatibility pass.
 CONFIG_MODE=server-kvm
+# Default to skipping huge linux-image-*-dbg packages unless explicitly disabled.
+SKIP_DEBUG_PACKAGES="${SKIP_DEBUG_PACKAGES:-true}"
+case "${SKIP_DEBUG_PACKAGES}" in
+  true|false) ;;
+  *) echo "Unsupported SKIP_DEBUG_PACKAGES value: ${SKIP_DEBUG_PACKAGES}" >&2; exit 1 ;;
+esac
 
 case "${CPU_TARGET}:${CPU_LEVEL}" in
   generic:1|generic_v2:2|generic_v3:3) ;;
@@ -38,7 +44,11 @@ export _processor_opt="${CPU_TARGET}"
 export _build_zfs=no
 export _build_nvidia_open=no
 export _build_r8125=no
-export _build_debug=no
+if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
+  export _build_debug=no
+else
+  export _build_debug=yes
+fi
 export _localmodcfg=no
 
 # shellcheck disable=SC1091
@@ -126,12 +136,19 @@ esac
 if [ "${CONFIG_MODE}" = "server-kvm" ]; then
   cfg --set-str SYSTEM_TRUSTED_KEYS ""
   cfg --set-str SYSTEM_REVOCATION_KEYS ""
-  cfg -d DEBUG_INFO
-  cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-  cfg -d DEBUG_INFO_DWARF4
-  cfg -d DEBUG_INFO_DWARF5
-  cfg -d DEBUG_INFO_BTF
-  cfg -e DEBUG_INFO_NONE
+  if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
+    cfg -d DEBUG_INFO
+    cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    cfg -d DEBUG_INFO_DWARF4
+    cfg -d DEBUG_INFO_DWARF5
+    cfg -d DEBUG_INFO_BTF
+    cfg -e DEBUG_INFO_NONE
+  else
+    cfg -d DEBUG_INFO_NONE
+    cfg -e DEBUG_INFO
+    cfg -e DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+    cfg -d DEBUG_INFO_REDUCED
+  fi
   cfg -e MODULES
   cfg -e MODULE_UNLOAD
   cfg -e KALLSYMS
@@ -213,8 +230,13 @@ echo "Package build finished; collecting .deb files"
 for deb in ../*.deb; do
   case "${deb}" in
     *-dbg_*.deb|*-dbg-*.deb)
-      echo "Skipping debug-symbol package: ${deb}"
-      rm -f "${deb}"
+      if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
+        echo "Skipping debug-symbol package: ${deb}"
+        rm -f "${deb}"
+      else
+        echo "Keeping debug-symbol package: ${deb}"
+        mv "${deb}" "${workspace}/artifacts/"
+      fi
       ;;
     *)
       echo "Keeping package: ${deb}"
@@ -244,6 +266,12 @@ heartbeat() {
 for deb in "${debs[@]}"; do
   echo "Validating package: ${deb}"
   dpkg-deb --info "${deb}"
+  case "${deb}" in
+    *-dbg_*.deb|*-dbg-*.deb)
+      echo "Skipping contents/lintian for large debug-symbol package: ${deb}"
+      continue
+      ;;
+  esac
   echo "Listing package contents: ${deb}"
   heartbeat "dpkg-deb --contents ${deb}" &
   heartbeat_pid=$!
@@ -358,6 +386,7 @@ fi
   echo "Source track: ${BUILD_TRACK}"
   echo "Profile: ${BUILD_PROFILE}"
   echo "Configuration: Debian server/KVM baseline"
+  echo "Skip debug packages: ${SKIP_DEBUG_PACKAGES}"
   echo "Scheduler: ${CPU_SCHEDULER}"
   echo "CachyOS config: ${CACHY_CONFIG}"
   echo "Timer frequency: ${HZ_TICKS} Hz"

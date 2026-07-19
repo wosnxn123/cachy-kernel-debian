@@ -32,7 +32,7 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 
 ## 构建触发
 
-原有 GitHub/Blacksmith 六组合工作流已移除。手动构建只通过 **Build CachyOS Kernel on CNB**，每次只构建一个组合。
+常规手动构建优先使用 **Build CachyOS Kernel on CNB**。旧的 GitHub/Blacksmith 工作流已恢复为仅手动触发的备用项（不会自动构建），每次只构建一个组合。
 
 **Check and build aggressive x64v2 on CNB** 是唯一的自动工作流：每十天检查一次上游 RC 版本，只有对应的 `aggressive / generic_v2` Release 不存在时才触发 CNB 编译。
 
@@ -42,7 +42,8 @@ lscpu | grep -E 'Flags|avx2|bmi1|bmi2|fma|sse4_1|sse4_2|popcnt'
 
 - `kernel_variant`：CachyOS 官方仓库当前提供的 default、server、RC、LTS、EEVDF、BORE、BMQ、hardened、RT-BORE 和 Deckify 变体；
 - `cpu_target`：`generic`、`generic_v2` 或 `generic_v3`，产物分别标记为 `x64v1`、`x64v2`、`x64v3`；
-- `cpu_scheduler`：使用所选变体的 `upstream-default`，或者手动覆盖为指定调度器。
+- `cpu_scheduler`：使用所选变体的 `upstream-default`，或者手动覆盖为指定调度器；
+- `skip_debug_packages`：是否跳过巨大的 `linux-image-*-dbg` 调试包，默认跳过。
 
 当前这台无桌面 Ivy Bridge 级 KVM 客户机建议选择 `linux-cachyos-rc`、`generic_v2` 与 `upstream-default`。推荐使用 `upstream-default`，因为它会保留对应官方变体预期的 profile；手动混搭调度器属于高级测试用途。
 
