@@ -36,12 +36,10 @@ jobs:
           set -euo pipefail
           git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git upstream
           cd upstream/linux-cachyos-rc
-          export _processor_opt=generic_v2
-          export _build_zfs=no
-          export _build_nvidia_open=no
-          export _build_r8125=no
-          export _build_debug=no
-          export _localmodcfg=no
+          # This is a version check, so resolve the package exactly as the
+          # upstream RC variant publishes it.
+          unset _processor_opt _build_zfs _build_nvidia_open _build_r8125 \
+            _build_debug _localmodcfg
           source PKGBUILD
 
           release_tag="cachyos-debian-aggressive-${pkgver}-${pkgrel}-x64v2"

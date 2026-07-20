@@ -250,7 +250,6 @@ jobs:
                 REQUESTED_CPU_SCHEDULER: $cpu_scheduler,
                 CPU_TARGET: $cpu_target,
                 CPU_LEVEL: $cpu_level,
-                CONFIG_MODE: "server-kvm",
                 BUILD_PROFILE: $profile,
                 BUILD_TRACK: $track,
                 RUN_QEMU_SMOKE_TEST: $qemu,

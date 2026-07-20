@@ -58,10 +58,10 @@ uname -r
 
 单次构建大致流程：
 
-1. 从 [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) 读取所选官方变体
-2. 执行该变体上游 `PKGBUILD` 的 `prepare()`，补丁和 profile 跟上游客
-3. 叠加本仓库 post-prepare 兼容配置（当前为 `server-kvm`）
-4. 按所选 CPU 基线编译（`x64v1` / `x64v2` / `x64v3`）
+1. 克隆 [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) 中当前所选的官方变体
+2. 下载该变体的精确源码和补丁列表，并执行上游 `PKGBUILD` 的 `prepare()`
+3. 执行 `olddefconfig`，使上游新加入的 Kconfig 项使用当次上游默认值
+4. 只叠加包名命名空间、所选 CPU 基线（`x64v1` / `x64v2` / `x64v3`），以及可选的 debug 包精简
 5. 用 `bindeb-pkg` 打 Debian 包
 6. 做包校验，并可在 QEMU 中冒烟启动
 7. 发布产物
@@ -79,13 +79,15 @@ uname -r
 
 | 层级 | 来源 |
 | --- | --- |
-| 调度器、LTO/编译器、HZ、tick、抢占、THP、O3、governor、BBR3、KCFI | 所选上游变体（`upstream-default`）或手动调度器覆盖 |
-| 额外的 Debian/KVM 兼容项 | 本仓库在上游 prepare 之后叠加 |
+| 内核配置、KVM/VFIO、驱动、补丁队列、调度器、LTO/编译器、HZ、tick、抢占、THP、O3、governor、BBR3、KCFI | 所选上游变体（`upstream-default`）或手动调度器覆盖 |
+| 本地配置增量 | 包的 `LOCALVERSION`、所选 x86-64 CPU 基线，以及 `skip_debug_packages=true` 时关闭调试信息 |
 | CPU 基线标识 | `generic` / `generic_v2` / `generic_v3` → 显示为 `x64v1` / `x64v2` / `x64v3` |
 
 `upstream-default` 表示不覆盖该变体自己的默认调度器。对 `linux-cachyos-rc` 来说，就是官方 RC 默认 profile。
 
-Stable 与 RC 的差异来自上游官方 profile 不同。最终解析结果以 `BUILD-MANIFEST.txt` 为准。
+Stable 与 RC 的差异来自上游官方 profile 不同。`BUILD-MANIFEST.txt` 会记录实际使用的 CachyOS 打包提交、配置校验值、下载补丁数和最终配置校验值。
+
+因此上游新增的 Kconfig 项、KVM/VFIO 改动、驱动和补丁队列，会在下一次构建直接进入，不需要在本仓库维护完整 `.config`。CachyOS 的 ZFS、NVIDIA Open、r8125 等 Arch 专用附属包不会被悄悄丢弃：如果上游默认启用了其中一个，这个 Debian 构建器会明确失败，因为它需要独立的 Debian 打包适配。普通 Debian 的 ZFS 请配合生成的 headers 安装发行版的 ZFS DKMS 包；PVE 项目则使用 PVE 自己的 OpenZFS 集成。
 
 ## CPU 基线
 

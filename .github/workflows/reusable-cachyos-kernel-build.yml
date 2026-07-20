@@ -61,12 +61,11 @@ jobs:
           changed=false
           for variant in linux-cachyos-server linux-cachyos-rc; do
             cd "${GITHUB_WORKSPACE}/upstream/${variant}"
-            export _processor_opt=generic_v2
-            export _build_zfs=no
-            export _build_nvidia_open=no
-            export _build_r8125=no
-            export _build_debug=no
-            export _localmodcfg=no
+            # Version detection must read the variant exactly as upstream
+            # publishes it; no local build-option defaults are injected here.
+            unset _processor_opt _build_zfs _build_nvidia_open _build_r8125 \
+              _build_debug _localmodcfg _cpusched _cachy_config _HZ_ticks \
+              _tickrate _preempt _hugepage
             source PKGBUILD
 
             for cpu_level in 1 2 3; do
@@ -158,19 +157,28 @@ jobs:
           set -euxo pipefail
           mkdir -p build
           git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git build/linux-cachyos-packaging
+          packaging_commit="$(git -C build/linux-cachyos-packaging rev-parse HEAD)"
 
           cd "build/linux-cachyos-packaging/${KERNEL_VARIANT}"
           if [ "${REQUESTED_CPU_SCHEDULER}" != "upstream-default" ]; then
             export _cpusched="${REQUESTED_CPU_SCHEDULER}"
           fi
           export _processor_opt="${CPU_TARGET}"
-          export _build_zfs=no
-          export _build_nvidia_open=no
-          export _build_r8125=no
-          export _build_debug=no
-          export _localmodcfg=no
+          # Preserve the PKGBUILD's live feature defaults instead of carrying
+          # a repository-owned CachyOS feature list or complete .config.
+          unset _build_zfs _build_nvidia_open _build_r8125 _build_debug _localmodcfg
 
           source PKGBUILD
+          packaging_config_sha256="$(sha256sum config | awk '{print $1}')"
+
+          # Do not silently omit an Arch-only companion package if upstream
+          # starts enabling it by default; it needs a real Debian adapter.
+          for companion_option in _build_zfs _build_nvidia_open _build_r8125; do
+            if [ "${!companion_option:-no}" = "yes" ]; then
+              echo "Upstream enabled ${companion_option}; add its Debian package adapter before building." >&2
+              exit 1
+            fi
+          done
 
           for resolved_setting in \
             _cpusched _cachy_config _HZ_ticks _tickrate _preempt _hugepage \
@@ -211,6 +219,8 @@ jobs:
             echo "pkgrel=${pkgrel}"
             echo "srcname=${_srcname}"
             echo "source_url=${source_url}"
+            echo "packaging_commit=${packaging_commit}"
+            echo "packaging_config_sha256=${packaging_config_sha256}"
           } >> "${GITHUB_OUTPUT}"
 
           cd "${GITHUB_WORKSPACE}/build"
@@ -221,6 +231,7 @@ jobs:
           tar -xf "${source_archive}"
           ln -s "${GITHUB_WORKSPACE}/build/linux-cachyos-packaging/${KERNEL_VARIANT}/config" config
 
+          downloaded_patch_count=0
           for source_item in "${source[@]}"; do
             patch_url="${source_item#*::}"
             if [[ "${patch_url}" != http* || "${patch_url}" != *.patch ]]; then
@@ -230,6 +241,7 @@ jobs:
             curl --fail --location --retry 5 --retry-delay 10 \
               --output "${patch_name}" \
               "${patch_url}"
+            downloaded_patch_count=$((downloaded_patch_count + 1))
           done
 
           export srcdir="${GITHUB_WORKSPACE}/build"
@@ -245,7 +257,12 @@ jobs:
             "${_srcname}/localversion.20-pkgname" \
             "${_srcname}/version"
 
-          echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}" >> "${GITHUB_OUTPUT}"
+          upstream_prelocal_config_sha256="$(sha256sum "${_srcname}/.config" | awk '{print $1}')"
+          {
+            echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}"
+            echo "downloaded_patch_count=${downloaded_patch_count}"
+            echo "upstream_prelocal_config_sha256=${upstream_prelocal_config_sha256}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Configure kernel profile and CPU baseline
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
@@ -257,131 +274,13 @@ jobs:
           }
 
           cfg --set-str LOCALVERSION "-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}"
-          cfg --set-str SYSTEM_TRUSTED_KEYS ""
-          cfg --set-str SYSTEM_REVOCATION_KEYS ""
+          # The live CachyOS config and prepare() output are the baseline.
+          # Keep only the package namespace and the explicitly selected CPU
+          # baseline; debug information is suppressed for the small default
+          # Debian artifact set.
           cfg -d DEBUG_INFO
           cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
           cfg -d DEBUG_INFO_BTF
-          cfg -e MODULES
-          cfg -e MODULE_UNLOAD
-          cfg -e KALLSYMS
-          cfg -e KALLSYMS_ALL
-          cfg -e IKCONFIG
-          cfg -e IKCONFIG_PROC
-          cfg -e GENERIC_CPU
-          for cpu_opt in \
-            GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
-            MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
-            MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
-            MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
-            MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
-            cfg -d "${cpu_opt}"
-          done
-          case "${CPU_TARGET}" in
-            generic) cfg --set-val X86_64_VERSION 1 ;;
-            generic_v2) cfg --set-val X86_64_VERSION 2 ;;
-            generic_v3) cfg --set-val X86_64_VERSION 3 ;;
-            *) echo "Unsupported CPU target: ${CPU_TARGET}" >&2; exit 1 ;;
-          esac
-          cfg -e HIGH_RES_TIMERS
-          cfg -e CPU_FREQ
-          cfg -e CPU_FREQ_GOV_SCHEDUTIL
-          cfg -e X86_AMD_PSTATE
-          cfg -e ACPI
-          cfg -e EFI
-          cfg -e EFI_STUB
-          cfg -e EFI_PARTITION
-
-          cfg -e BLK_DEV_INITRD
-          cfg -e BINFMT_ELF
-          cfg -e BINFMT_SCRIPT
-          cfg -e DEVTMPFS
-          cfg -e DEVTMPFS_MOUNT
-          cfg -e PRINTK
-          cfg -e EARLY_PRINTK
-          cfg -e TTY
-          cfg -e SERIAL_8250
-          cfg -e SERIAL_8250_CONSOLE
-          cfg -e SERIAL_8250_PCI
-          cfg -e SERIAL_EARLYCON
-          cfg -e SERIAL_CORE
-          cfg -e SERIAL_CORE_CONSOLE
-          cfg -e RD_GZIP
-          cfg -e RD_ZSTD
-          cfg -e RD_XZ
-          cfg -e TMPFS
-          cfg -e CGROUPS
-          cfg -e CGROUP_BPF
-          cfg -e PSI
-          cfg -e BPF
-          cfg -e BPF_SYSCALL
-          cfg -e BPF_JIT
-
-          cfg -e NET
-          cfg -e INET
-          cfg -e NETFILTER
-          cfg -m NF_TABLES
-          cfg -m BRIDGE
-          cfg -m VLAN_8021Q
-          cfg -m WIREGUARD
-
-          cfg -e INPUT
-          cfg -e INPUT_EVDEV
-          cfg -e HID
-          cfg -m HID_GENERIC
-          cfg -m HID_MULTITOUCH
-          cfg -m I2C_HID_ACPI
-          cfg -m USB_HID
-          cfg -m USB_XHCI_HCD
-          cfg -m USB_STORAGE
-          cfg -m UVC_VIDEO
-          cfg -m SND_HDA_INTEL
-          cfg -m SND_USB_AUDIO
-
-          cfg -e DRM
-          cfg -m DRM_AMDGPU
-          cfg -m DRM_I915
-          cfg -m DRM_NOUVEAU
-          cfg -m DRM_VIRTIO_GPU
-          cfg -e FB_EFI
-          cfg -e FRAMEBUFFER_CONSOLE
-
-          cfg -m BT
-          cfg -m BT_HCIBTUSB
-          cfg -e WLAN
-          cfg -m CFG80211
-          cfg -m MAC80211
-          cfg -m IWLWIFI
-          cfg -e IWLWIFI_OPMODE_MODULAR
-          cfg -m ATH10K
-          cfg -m ATH11K
-          cfg -m RTW88
-          cfg -m RTW89
-          cfg -m MT76
-
-          cfg -m EXT4_FS
-          cfg -m BTRFS_FS
-          cfg -m XFS_FS
-          cfg -m F2FS_FS
-          cfg -m EXFAT_FS
-          cfg -m NTFS3_FS
-          cfg -m NFS_FS
-          cfg -m CIFS
-          cfg -m OVERLAY_FS
-          cfg -m SQUASHFS
-          cfg -m ZRAM
-          cfg -e ZSWAP
-
-          cfg -m KVM
-          cfg -m KVM_INTEL
-          cfg -m KVM_AMD
-          cfg -m VFIO
-          cfg -m VFIO_PCI
-          cfg -m VIRTIO
-          cfg -m VIRTIO_PCI
-          cfg -m VIRTIO_BLK
-          cfg -m VIRTIO_NET
-          cfg -m VIRTIO_CONSOLE
 
           build_flags=()
           case "${USE_LLVM_LTO}" in
@@ -391,32 +290,12 @@ jobs:
             *) echo "Unsupported upstream LTO mode: ${USE_LLVM_LTO}" >&2; exit 1 ;;
           esac
           make "${build_flags[@]}" olddefconfig
-          grep -E 'CONFIG_(GENERIC_CPU|GENERIC_CPU[234]|X86_64_VERSION|BLK_DEV_INITRD|RD_GZIP|SERIAL_8250_CONSOLE)=' .config || true
-          for state_config in \
-            MODULES PREEMPT_DYNAMIC DRM_AMDGPU DRM_I915 EXT4_FS BTRFS_FS \
-            KVM VFIO_PCI SERIAL_8250_CONSOLE BLK_DEV_INITRD CACHY SCHED_BORE \
-            SCHED_ALT SCHED_BMQ PREEMPT_RT; do
-            printf '%s=' "${state_config}"
-            scripts/config --state "${state_config}" || true
-          done
           for required_config in \
-            CONFIG_GENERIC_CPU=y \
             CONFIG_X86_64_VERSION=${CPU_LEVEL} \
-            CONFIG_BLK_DEV_INITRD=y \
-            CONFIG_BINFMT_ELF=y \
-            CONFIG_BINFMT_SCRIPT=y \
-            CONFIG_PRINTK=y \
-            CONFIG_SERIAL_8250=y \
-            CONFIG_SERIAL_8250_CONSOLE=y; do
+            "CONFIG_LOCALVERSION=\"-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}\""; do
             grep -qx "${required_config}" .config
           done
-          grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
-          case "${USE_LLVM_LTO}" in
-            none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
-            thin) grep -qx 'CONFIG_LTO_CLANG_THIN=y' .config ;;
-            thin-dist) grep -qx 'CONFIG_LTO_CLANG_THIN_DIST=y' .config ;;
-            full) grep -qx 'CONFIG_LTO_CLANG_FULL=y' .config ;;
-          esac
+          echo "RESOLVED_CONFIG_SHA256=$(sha256sum .config | awk '{print $1}')" >> "${GITHUB_ENV}"
 
       - name: Compile kernel and create Debian packages
         working-directory: ${{ steps.cachyos.outputs.source_dir }}
@@ -547,11 +426,19 @@ jobs:
           set -euxo pipefail
           {
             echo "CachyOS source: ${{ steps.cachyos.outputs.source_url }}"
+            echo "CachyOS packaging repository: https://github.com/CachyOS/linux-cachyos"
+            echo "CachyOS packaging commit: ${{ steps.cachyos.outputs.packaging_commit }}"
+            echo "CachyOS packaging config SHA256: ${{ steps.cachyos.outputs.packaging_config_sha256 }}"
+            echo "CachyOS downloaded patch count: ${{ steps.cachyos.outputs.downloaded_patch_count }}"
+            echo "CachyOS prepared config SHA256 (before local deltas): ${{ steps.cachyos.outputs.upstream_prelocal_config_sha256 }}"
+            echo "Resolved config SHA256: ${RESOLVED_CONFIG_SHA256}"
             echo "Source name: ${{ steps.cachyos.outputs.srcname }}"
             echo "Version: ${{ steps.cachyos.outputs.pkgver }}-${{ steps.cachyos.outputs.pkgrel }}"
             echo "Variant: ${KERNEL_VARIANT}"
             echo "Source track: ${BUILD_TRACK}"
             echo "Profile: ${BUILD_PROFILE}"
+            echo "Configuration flow: live CachyOS config -> live CachyOS prepare() patch queue -> olddefconfig"
+            echo "Local config deltas: LOCALVERSION, x86-64 CPU baseline, and DEBUG_INFO disabled for the default small artifact set"
             echo "Scheduler: ${CPU_SCHEDULER}"
             echo "CachyOS config: ${CACHY_CONFIG}"
             echo "Timer frequency: ${HZ_TICKS} Hz"

@@ -58,10 +58,10 @@ Keep a known-good distribution kernel installed so the bootloader can fall back.
 
 Each run roughly:
 
-1. Reads the selected official CachyOS packaging variant from [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos)
-2. Runs that variant’s upstream `PKGBUILD` `prepare()` so patches and profile come from upstream
-3. Applies this repository’s post-prepare compatibility pass (currently `server-kvm`)
-4. Compiles with the selected x86-64 baseline (`x64v1` / `x64v2` / `x64v3`)
+1. Clones the current selected official variant from [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos)
+2. Downloads that exact variant's source and patch list, then runs its upstream `PKGBUILD` `prepare()`
+3. Runs `olddefconfig`, so new upstream Kconfig symbols receive their current upstream defaults
+4. Applies only the package namespace, selected x86-64 baseline (`x64v1` / `x64v2` / `x64v3`), and the optional debug-package reduction
 5. Packages with `bindeb-pkg`
 6. Validates packages and optionally boots the image in QEMU
 7. Publishes outputs
@@ -79,13 +79,15 @@ Typical packages:
 
 | Layer | Source |
 | --- | --- |
-| Scheduler, LTO/compiler, HZ, tick, preemption, THP, O3, governor, BBR3, KCFI | Selected upstream CachyOS variant (`upstream-default`) or an explicit scheduler override |
-| Extra Debian/KVM compatibility options | Applied by this repository after upstream prepare |
+| Kernel configuration, KVM/VFIO, drivers, patch queue, scheduler, LTO/compiler, HZ, tick, preemption, THP, O3, governor, BBR3, KCFI | Selected upstream CachyOS variant (`upstream-default`) or an explicit scheduler override |
+| Local configuration deltas | Package `LOCALVERSION`, selected x86-64 baseline, and disabled debug info when `skip_debug_packages=true` |
 | CPU baseline marker | Selected `generic` / `generic_v2` / `generic_v3` → visible as `x64v1` / `x64v2` / `x64v3` |
 
 `upstream-default` means “do not override the variant’s own scheduler”. For `linux-cachyos-rc`, that is the official RC default profile.
 
-Stable and RC tracks differ because their upstream profiles differ. Resolved values are recorded in `BUILD-MANIFEST.txt`.
+Stable and RC tracks differ because their upstream profiles differ. `BUILD-MANIFEST.txt` records the resolved CachyOS packaging commit, config checksums, downloaded patch count, and final config checksum.
+
+New upstream Kconfig options, KVM/VFIO changes, drivers, and patch-queue changes therefore enter the next build without maintaining a local full `.config`. Arch-only companion packages such as CachyOS-packaged ZFS, NVIDIA Open, or r8125 are not silently dropped: if upstream enables one by default, this Debian builder stops with a clear message because that component needs its own Debian package adapter. For regular Debian ZFS use, install the distribution's ZFS DKMS package against the generated headers; the PVE builder uses PVE's own OpenZFS integration.
 
 ## CPU baselines
 

@@ -14,8 +14,6 @@ for name in "${required_env[@]}"; do
   fi
 done
 
-# This Debian builder always applies the repository's server/KVM compatibility pass.
-CONFIG_MODE=server-kvm
 # Default to skipping huge linux-image-*-dbg packages unless explicitly disabled.
 SKIP_DEBUG_PACKAGES="${SKIP_DEBUG_PACKAGES:-true}"
 case "${SKIP_DEBUG_PACKAGES}" in
@@ -35,24 +33,29 @@ mkdir -p artifacts build
 
 echo "Building ${KERNEL_VARIANT} for x86-64-v${CPU_LEVEL} on $(nproc) CPUs"
 git clone --depth=1 https://github.com/CachyOS/linux-cachyos.git build/linux-cachyos-packaging
+packaging_commit="$(git -C build/linux-cachyos-packaging rev-parse HEAD)"
 
 cd "build/linux-cachyos-packaging/${KERNEL_VARIANT}"
 if [ "${REQUESTED_CPU_SCHEDULER}" != "upstream-default" ]; then
   export _cpusched="${REQUESTED_CPU_SCHEDULER}"
 fi
 export _processor_opt="${CPU_TARGET}"
-export _build_zfs=no
-export _build_nvidia_open=no
-export _build_r8125=no
-if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
-  export _build_debug=no
-else
-  export _build_debug=yes
-fi
-export _localmodcfg=no
+# Keep every upstream PKGBUILD feature default.  This builder is intentionally
+# not a copy of a long-lived CachyOS .config or patch list.
+unset _build_zfs _build_nvidia_open _build_r8125 _build_debug _localmodcfg
 
 # shellcheck disable=SC1091
 source PKGBUILD
+packaging_config_sha256="$(sha256sum config | awk '{print $1}')"
+
+# These Arch-only companion packages need their own Debian packaging path.  Do
+# not silently turn one off if CachyOS enables it upstream in the future.
+for companion_option in _build_zfs _build_nvidia_open _build_r8125; do
+  if [ "${!companion_option:-no}" = "yes" ]; then
+    echo "Upstream enabled ${companion_option}; add its Debian package adapter before building." >&2
+    exit 1
+  fi
+done
 
 for setting in \
   _cpusched _cachy_config _HZ_ticks _tickrate _preempt _hugepage \
@@ -93,6 +96,7 @@ curl --fail --location --retry 5 --retry-delay 10 \
 tar -xf "${source_archive}"
 ln -s "${workspace}/build/linux-cachyos-packaging/${KERNEL_VARIANT}/config" config
 
+downloaded_patch_count=0
 for source_item in "${source[@]}"; do
   patch_url="${source_item#*::}"
   if [[ "${patch_url}" != http* || "${patch_url}" != *.patch ]]; then
@@ -100,6 +104,7 @@ for source_item in "${source[@]}"; do
   fi
   curl --fail --location --retry 5 --retry-delay 10 \
     --output "${patch_url##*/}" "${patch_url}"
+  downloaded_patch_count=$((downloaded_patch_count + 1))
 done
 
 export srcdir="${workspace}/build"
@@ -121,6 +126,7 @@ rm -f \
 
 source_dir="${workspace}/build/${_srcname}"
 cd "${source_dir}"
+upstream_prelocal_config_sha256="$(sha256sum .config | awk '{print $1}')"
 
 cfg() {
   scripts/config "$@" || true
@@ -133,59 +139,21 @@ case "${CPU_TARGET}" in
   generic_v3) cfg --set-val X86_64_VERSION 3 ;;
 esac
 
-if [ "${CONFIG_MODE}" = "server-kvm" ]; then
-  cfg --set-str SYSTEM_TRUSTED_KEYS ""
-  cfg --set-str SYSTEM_REVOCATION_KEYS ""
-  if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
-    cfg -d DEBUG_INFO
-    cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-    cfg -d DEBUG_INFO_DWARF4
-    cfg -d DEBUG_INFO_DWARF5
-    cfg -d DEBUG_INFO_BTF
-    cfg -e DEBUG_INFO_NONE
-  else
-    cfg -d DEBUG_INFO_NONE
-    cfg -e DEBUG_INFO
-    cfg -e DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-    cfg -d DEBUG_INFO_REDUCED
-  fi
-  cfg -e MODULES
-  cfg -e MODULE_UNLOAD
-  cfg -e KALLSYMS
-  cfg -e KALLSYMS_ALL
-  cfg -e IKCONFIG
-  cfg -e IKCONFIG_PROC
-  cfg -e GENERIC_CPU
-  for cpu_opt in \
-    GENERIC_CPU3 GENERIC_CPU4 MNATIVE MIVYBRIDGE MPSC MATOM MCORE2 \
-    MNEHALEM MWESTMERE MSILVERMONT MGOLDMONT MGOLDMONTPLUS MSKYLAKE \
-    MSKYLAKEX MCANNONLAKE MICELAKE MCASCADELAKE MCOOPERLAKE \
-    MTIGERLAKE MSAPPHIRERAPIDS MROCKETLAKE MALDERLAKE MRAPTORLAKE \
-    MMETEORLAKE MEMERALDRAPIDS MZEN MZEN2 MZEN3 MZEN4 MZEN5; do
-    cfg -d "${cpu_opt}"
-  done
-
-  for enabled in \
-    HIGH_RES_TIMERS CPU_FREQ CPU_FREQ_GOV_SCHEDUTIL X86_AMD_PSTATE ACPI EFI \
-    EFI_STUB EFI_PARTITION BLK_DEV_INITRD BINFMT_ELF BINFMT_SCRIPT DEVTMPFS \
-    DEVTMPFS_MOUNT PRINTK EARLY_PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE \
-    SERIAL_8250_PCI SERIAL_EARLYCON SERIAL_CORE SERIAL_CORE_CONSOLE RD_GZIP \
-    RD_ZSTD RD_XZ TMPFS CGROUPS CGROUP_BPF PSI BPF BPF_SYSCALL BPF_JIT NET \
-    INET NETFILTER INPUT INPUT_EVDEV HID WLAN IWLWIFI_OPMODE_MODULAR DRM \
-    FB_EFI FRAMEBUFFER_CONSOLE ZSWAP; do
-    cfg -e "${enabled}"
-  done
-
-  for module in \
-    NF_TABLES BRIDGE VLAN_8021Q WIREGUARD HID_GENERIC HID_MULTITOUCH \
-    I2C_HID_ACPI USB_HID USB_XHCI_HCD USB_STORAGE UVC_VIDEO SND_HDA_INTEL \
-    SND_USB_AUDIO DRM_AMDGPU DRM_I915 DRM_NOUVEAU DRM_VIRTIO_GPU BT \
-    BT_HCIBTUSB CFG80211 MAC80211 IWLWIFI ATH10K ATH11K RTW88 RTW89 MT76 \
-    EXT4_FS BTRFS_FS XFS_FS F2FS_FS EXFAT_FS NTFS3_FS NFS_FS CIFS \
-    OVERLAY_FS SQUASHFS ZRAM KVM KVM_INTEL KVM_AMD VFIO VFIO_PCI VIRTIO \
-    VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE; do
-    cfg -m "${module}"
-  done
+# Preserve the resolved CachyOS configuration and patch queue verbatim.  The
+# two deliberate local deltas are the package namespace/CPU baseline above,
+# plus disabling debug information when the caller requests no debug package.
+if [ "${SKIP_DEBUG_PACKAGES}" = "true" ]; then
+  cfg -d DEBUG_INFO
+  cfg -d DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+  cfg -d DEBUG_INFO_DWARF4
+  cfg -d DEBUG_INFO_DWARF5
+  cfg -d DEBUG_INFO_BTF
+  cfg -e DEBUG_INFO_NONE
+else
+  cfg -d DEBUG_INFO_NONE
+  cfg -e DEBUG_INFO
+  cfg -e DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+  cfg -d DEBUG_INFO_REDUCED
 fi
 
 build_flags=()
@@ -196,28 +164,12 @@ case "${USE_LLVM_LTO}" in
 esac
 
 make "${build_flags[@]}" olddefconfig
-for required_config in CONFIG_X86_64_VERSION="${CPU_LEVEL}"; do
+for required_config in \
+  CONFIG_X86_64_VERSION="${CPU_LEVEL}" \
+  "CONFIG_LOCALVERSION=\"-x64v${CPU_LEVEL}-cachyos-${BUILD_PROFILE}\""; do
   grep -qx "${required_config}" .config
 done
-if [ "${CONFIG_MODE}" = "server-kvm" ]; then
-  for required_config in \
-    CONFIG_GENERIC_CPU=y \
-    CONFIG_BLK_DEV_INITRD=y \
-    CONFIG_BINFMT_ELF=y \
-    CONFIG_BINFMT_SCRIPT=y \
-    CONFIG_PRINTK=y \
-    CONFIG_SERIAL_8250=y \
-    CONFIG_SERIAL_8250_CONSOLE=y; do
-    grep -qx "${required_config}" .config
-  done
-fi
-grep -qx "CONFIG_HZ=${HZ_TICKS}" .config
-case "${USE_LLVM_LTO}" in
-  none) grep -qx 'CONFIG_LTO_NONE=y' .config ;;
-  thin) grep -qx 'CONFIG_LTO_CLANG_THIN=y' .config ;;
-  thin-dist) grep -qx 'CONFIG_LTO_CLANG_THIN_DIST=y' .config ;;
-  full) grep -qx 'CONFIG_LTO_CLANG_FULL=y' .config ;;
-esac
+resolved_config_sha256="$(sha256sum .config | awk '{print $1}')"
 
 export KBUILD_BUILD_USER="cnb-cloud-build"
 export KBUILD_BUILD_HOST="cnb.cool"
@@ -380,12 +332,19 @@ fi
 
 {
   echo "CachyOS source: ${source_url}"
+  echo "CachyOS packaging repository: https://github.com/CachyOS/linux-cachyos"
+  echo "CachyOS packaging commit: ${packaging_commit}"
+  echo "CachyOS packaging config SHA256: ${packaging_config_sha256}"
+  echo "CachyOS downloaded patch count: ${downloaded_patch_count}"
+  echo "CachyOS prepared config SHA256 (before local deltas): ${upstream_prelocal_config_sha256}"
+  echo "Resolved config SHA256: ${resolved_config_sha256}"
   echo "Source name: ${_srcname}"
   echo "Version: ${pkgver}-${pkgrel}"
   echo "Variant: ${KERNEL_VARIANT}"
   echo "Source track: ${BUILD_TRACK}"
   echo "Profile: ${BUILD_PROFILE}"
-  echo "Configuration: Debian server/KVM baseline"
+  echo "Configuration flow: live CachyOS config -> live CachyOS prepare() patch queue -> olddefconfig"
+  echo "Local config deltas: LOCALVERSION, x86-64 CPU baseline, and DEBUG_INFO only when skip_debug_packages=true"
   echo "Skip debug packages: ${SKIP_DEBUG_PACKAGES}"
   echo "Scheduler: ${CPU_SCHEDULER}"
   echo "CachyOS config: ${CACHY_CONFIG}"
@@ -449,7 +408,7 @@ if [ "${PUBLISH_RELEASE}" = "true" ]; then
   else
     release_tag="cachyos-debian-${BUILD_TRACK}-${pkgver}-${pkgrel}-x64v${CPU_LEVEL}"
   fi
-  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, Debian server/KVM, x86-64-v${CPU_LEVEL}"
+  release_name="CachyOS Debian Kernel ${BUILD_TRACK}, ${KERNEL_VARIANT}, ${CPU_SCHEDULER}, x86-64-v${CPU_LEVEL}"
   release_flags=(--repo "${GITHUB_REPOSITORY}" --title "${release_name}" --notes-file artifacts/BUILD-MANIFEST.txt)
   if [ "${BUILD_TRACK}" = "aggressive" ]; then
     release_flags+=(--prerelease)
