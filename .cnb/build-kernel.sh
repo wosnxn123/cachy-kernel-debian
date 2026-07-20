@@ -97,13 +97,56 @@ tar -xf "${source_archive}"
 ln -s "${workspace}/build/linux-cachyos-packaging/${KERNEL_VARIANT}/config" config
 
 downloaded_patch_count=0
+downloaded_source_count=0
 for source_item in "${source[@]}"; do
-  patch_url="${source_item#*::}"
-  if [[ "${patch_url}" != http* || "${patch_url}" != *.patch ]]; then
+  source_url_item="${source_item#*::}"
+  case "${source_url_item}" in
+    http://*|https://*) ;;
+    git+*|git://*)
+      echo "Upstream VCS source requires a Debian packaging adapter: ${source_item}" >&2
+      exit 1
+      ;;
+    *) continue ;;
+  esac
+
+  # A PKGBUILD may use either URL::local-name or a bare URL.  Match makepkg's
+  # source filename rule so prepare() sees exactly what the upstream package
+  # expects, including any newly added auxiliary files.
+  if [[ "${source_item}" == *::* ]]; then
+    source_name="${source_item%%::*}"
+  else
+    source_name="${source_url_item##*/}"
+    source_name="${source_name%%\?*}"
+    source_name="${source_name%%\#*}"
+  fi
+
+  # The kernel archive was fetched above.  Fetch every other HTTP(S) source,
+  # not just today's .patch files, so future upstream prepare() additions are
+  # inherited by this build rather than silently omitted.
+  if [ "${source_url_item}" = "${source_url}" ]; then
     continue
   fi
+  mkdir -p "$(dirname "${source_name}")"
   curl --fail --location --retry 5 --retry-delay 10 \
-    --output "${patch_url##*/}" "${patch_url}"
+    --output "${source_name}" "${source_url_item}"
+  downloaded_source_count=$((downloaded_source_count + 1))
+
+  case "${source_name}" in
+    *.patch) ;;
+    *.patch.zst)
+      zstd --decompress --force --output "${source_name%.zst}" "${source_name}"
+      ;;
+    *.patch.xz)
+      xz --decompress --force --keep "${source_name}"
+      ;;
+    *.patch.gz)
+      gzip --decompress --force --keep "${source_name}"
+      ;;
+    *.patch.bz2)
+      bzip2 --decompress --force --keep "${source_name}"
+      ;;
+    *) continue ;;
+  esac
   downloaded_patch_count=$((downloaded_patch_count + 1))
 done
 
@@ -335,6 +378,7 @@ fi
   echo "CachyOS packaging repository: https://github.com/CachyOS/linux-cachyos"
   echo "CachyOS packaging commit: ${packaging_commit}"
   echo "CachyOS packaging config SHA256: ${packaging_config_sha256}"
+  echo "CachyOS downloaded source count: ${downloaded_source_count}"
   echo "CachyOS downloaded patch count: ${downloaded_patch_count}"
   echo "CachyOS prepared config SHA256 (before local deltas): ${upstream_prelocal_config_sha256}"
   echo "Resolved config SHA256: ${resolved_config_sha256}"

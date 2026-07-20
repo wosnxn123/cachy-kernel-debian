@@ -118,6 +118,7 @@ jobs:
             bc \
             bindgen \
             bison \
+            bzip2 \
             build-essential \
             busybox-static \
             ca-certificates \
@@ -232,15 +233,52 @@ jobs:
           ln -s "${GITHUB_WORKSPACE}/build/linux-cachyos-packaging/${KERNEL_VARIANT}/config" config
 
           downloaded_patch_count=0
+          downloaded_source_count=0
           for source_item in "${source[@]}"; do
-            patch_url="${source_item#*::}"
-            if [[ "${patch_url}" != http* || "${patch_url}" != *.patch ]]; then
+            source_url_item="${source_item#*::}"
+            case "${source_url_item}" in
+              http://*|https://*) ;;
+              git+*|git://*)
+                echo "Upstream VCS source requires a Debian packaging adapter: ${source_item}" >&2
+                exit 1
+                ;;
+              *) continue ;;
+            esac
+
+            # Mirror makepkg's source filename rule.  This fetches every
+            # upstream HTTP(S) input used by prepare(), not only .patch files.
+            if [[ "${source_item}" == *::* ]]; then
+              source_name="${source_item%%::*}"
+            else
+              source_name="${source_url_item##*/}"
+              source_name="${source_name%%\?*}"
+              source_name="${source_name%%\#*}"
+            fi
+            if [ "${source_url_item}" = "${source_url}" ]; then
               continue
             fi
-            patch_name="${patch_url##*/}"
+            mkdir -p "$(dirname "${source_name}")"
             curl --fail --location --retry 5 --retry-delay 10 \
-              --output "${patch_name}" \
-              "${patch_url}"
+              --output "${source_name}" \
+              "${source_url_item}"
+            downloaded_source_count=$((downloaded_source_count + 1))
+
+            case "${source_name}" in
+              *.patch) ;;
+              *.patch.zst)
+                zstd --decompress --force --output "${source_name%.zst}" "${source_name}"
+                ;;
+              *.patch.xz)
+                xz --decompress --force --keep "${source_name}"
+                ;;
+              *.patch.gz)
+                gzip --decompress --force --keep "${source_name}"
+                ;;
+              *.patch.bz2)
+                bzip2 --decompress --force --keep "${source_name}"
+                ;;
+              *) continue ;;
+            esac
             downloaded_patch_count=$((downloaded_patch_count + 1))
           done
 
@@ -260,6 +298,7 @@ jobs:
           upstream_prelocal_config_sha256="$(sha256sum "${_srcname}/.config" | awk '{print $1}')"
           {
             echo "source_dir=${GITHUB_WORKSPACE}/build/${_srcname}"
+            echo "downloaded_source_count=${downloaded_source_count}"
             echo "downloaded_patch_count=${downloaded_patch_count}"
             echo "upstream_prelocal_config_sha256=${upstream_prelocal_config_sha256}"
           } >> "${GITHUB_OUTPUT}"
@@ -429,6 +468,7 @@ jobs:
             echo "CachyOS packaging repository: https://github.com/CachyOS/linux-cachyos"
             echo "CachyOS packaging commit: ${{ steps.cachyos.outputs.packaging_commit }}"
             echo "CachyOS packaging config SHA256: ${{ steps.cachyos.outputs.packaging_config_sha256 }}"
+            echo "CachyOS downloaded source count: ${{ steps.cachyos.outputs.downloaded_source_count }}"
             echo "CachyOS downloaded patch count: ${{ steps.cachyos.outputs.downloaded_patch_count }}"
             echo "CachyOS prepared config SHA256 (before local deltas): ${{ steps.cachyos.outputs.upstream_prelocal_config_sha256 }}"
             echo "Resolved config SHA256: ${RESOLVED_CONFIG_SHA256}"

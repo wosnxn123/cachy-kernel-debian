@@ -7,6 +7,7 @@ RUN apt-get update \
         bc \
         bindgen \
         bison \
+        bzip2 \
         build-essential \
         busybox-static \
         ca-certificates \
