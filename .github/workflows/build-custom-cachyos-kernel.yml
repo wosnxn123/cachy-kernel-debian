@@ -1,32 +1,77 @@
-﻿name: Reusable CachyOS Kernel Build
+﻿name: Build Custom CachyOS Kernel Debian Package
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       runner:
-        required: false
-        default: "ubuntu-24.04"
-        type: string
+        description: "Runner to use for the kernel build"
+        required: true
+        default: "blacksmith-16vcpu-ubuntu-2404"
+        type: choice
+        options:
+          - blacksmith-8vcpu-ubuntu-2404
+          - blacksmith-16vcpu-ubuntu-2404
+          - blacksmith-32vcpu-ubuntu-2404
+          - ubuntu-24.04
+      kernel_variant:
+        description: "Official CachyOS packaging variant"
+        required: true
+        default: "linux-cachyos"
+        type: choice
+        options:
+          - linux-cachyos
+          - linux-cachyos-server
+          - linux-cachyos-rc
+          - linux-cachyos-lts
+          - linux-cachyos-eevdf
+          - linux-cachyos-bore
+          - linux-cachyos-bmq
+          - linux-cachyos-hardened
+          - linux-cachyos-rt-bore
+          - linux-cachyos-deckify
+      cpu_target:
+        description: "Minimum x86-64 CPU baseline"
+        required: true
+        default: "generic_v2"
+        type: choice
+        options:
+          - generic
+          - generic_v2
+          - generic_v3
+      cpu_scheduler:
+        description: "Scheduler override; upstream-default uses the selected variant's default"
+        required: true
+        default: "upstream-default"
+        type: choice
+        options:
+          - upstream-default
+          - cachyos
+          - eevdf
+          - bore
+          - bmq
+          - hardened
+          - rt
+          - rt-bore
       run_qemu_smoke_test:
-        required: false
+        description: "Boot the built kernel with a tiny initramfs under QEMU"
+        required: true
         default: true
         type: boolean
       publish_release:
-        required: false
+        description: "Create/update a GitHub Release and upload the .deb files"
+        required: true
         default: false
         type: boolean
       release_tag:
+        description: "Release tag to create/update. Leave blank to auto-generate one."
         required: false
         default: ""
         type: string
       mark_latest:
-        required: false
+        description: "Mark the created/updated release as the latest release"
+        required: true
         default: false
         type: boolean
-      build_matrix:
-        description: "JSON matrix with exactly one include entry"
-        required: true
-        type: string
 permissions:
   contents: write
 
@@ -88,8 +133,15 @@ jobs:
     name: Build, package, and test (${{ matrix.track }} x64v${{ matrix.cpu_level }})
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.build_matrix) }}
-    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
+      matrix:
+        include:
+          - track: custom
+            profile: custom
+            kernel_variant: ${{ inputs.kernel_variant }}
+            cpu_scheduler: ${{ inputs.cpu_scheduler }}
+            cpu_target: ${{ inputs.cpu_target }}
+            cpu_level: ${{ inputs.cpu_target == 'generic' && 1 || inputs.cpu_target == 'generic_v2' && 2 || 3 }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 720
     env:
       KERNEL_VARIANT: ${{ matrix.kernel_variant }}

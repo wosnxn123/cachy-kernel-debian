@@ -52,7 +52,6 @@ uname -r
 | **Build CachyOS Kernel on CNB** | 主构建入口，每次只构建一个组合 | 手动 |
 | **Check and build aggressive x64v2 on CNB** | 检查最新 `linux-cachyos-rc` + `generic_v2`，没有对应 Release 才构建 | 定时 + 手动 |
 | **Build Custom CachyOS Kernel Debian Package** | GitHub/Blacksmith 单组合备用构建 | 手动 |
-| **Reusable CachyOS Kernel Build** | 给备用构建调用的内部复用工作流 | 不面向用户 |
 
 ## 构建内容
 
@@ -250,8 +249,7 @@ VirtIO-GPU 不是必须；无桌面客户机通常不用开。
 .cnb/build-kernel.sh
 .github/workflows/build-cachyos-kernel-cnb.yml
 .github/workflows/build-cachyos-kernel-cnb-aggressive-v2.yml
-.github/workflows/build-cachyos-kernel-custom.yml
-.github/workflows/reusable-cachyos-kernel-build.yml
+.github/workflows/build-custom-cachyos-kernel.yml
 README.md
 README.zh-CN.md
 ```

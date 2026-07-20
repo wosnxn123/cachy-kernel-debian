@@ -52,7 +52,6 @@ Keep a known-good distribution kernel installed so the bootloader can fall back.
 | **Build CachyOS Kernel on CNB** | Main build path. One combination per run. | Manual |
 | **Check and build aggressive x64v2 on CNB** | Check latest `linux-cachyos-rc` + `generic_v2`; build only if that Release is missing | Schedule + manual |
 | **Build Custom CachyOS Kernel Debian Package** | GitHub/Blacksmith single-combination fallback | Manual |
-| **Reusable CachyOS Kernel Build** | Internal reusable job for the custom fallback | Not user-facing |
 
 ## What it builds
 
@@ -250,8 +249,7 @@ Lintian `W:` warnings for long package names or header helper binaries are expec
 .cnb/build-kernel.sh
 .github/workflows/build-cachyos-kernel-cnb.yml
 .github/workflows/build-cachyos-kernel-cnb-aggressive-v2.yml
-.github/workflows/build-cachyos-kernel-custom.yml
-.github/workflows/reusable-cachyos-kernel-build.yml
+.github/workflows/build-custom-cachyos-kernel.yml
 README.md
 README.zh-CN.md
 ```
