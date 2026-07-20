@@ -2,7 +2,9 @@ name: Check and build aggressive x64v2 on CNB
 
 on:
   schedule:
-    - cron: "0 22 * * *"
+    # Once daily at 00:00 UTC (08:00 Asia/Shanghai).
+    # Real rebuild gate is still "matching Release missing".
+    - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:
       skip_debug_packages:
@@ -21,33 +23,13 @@ concurrency:
 
 jobs:
   check-upstream:
-    name: Check aggressive x64v2 release every 10 days
+    name: Check aggressive x64v2 release daily
     runs-on: ubuntu-24.04
     outputs:
       build: ${{ steps.check.outputs.build }}
     steps:
-      - name: Enforce the ten-day check interval
-        id: cadence
-        env:
-          LAST_CHECK: ${{ vars.CNB_AGGRESSIVE_V2_LAST_CHECK }}
-        run: |
-          set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] || [ -z "${LAST_CHECK}" ]; then
-            echo "due=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          last_epoch="$(date --date="${LAST_CHECK}" +%s)"
-          now_epoch="$(date -u +%s)"
-          if [ $((now_epoch - last_epoch)) -lt 864000 ]; then
-            echo "due=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          echo "due=true" >> "${GITHUB_OUTPUT}"
-
       - name: Check the newest CachyOS RC version
         id: check
-        if: ${{ steps.cadence.outputs.due == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -72,20 +54,15 @@ jobs:
             echo "build=true" >> "${GITHUB_OUTPUT}"
           fi
 
-          # GITHUB_TOKEN may lack permission to write Actions variables on some
-          # repos/org policies. Cadence tracking is best-effort; the Release
-          # existence check above remains the real build gate.
+          # Best-effort diagnostics only. GITHUB_TOKEN may get HTTP 403 writing
+          # Actions variables; the Release existence check above is the real gate.
           if gh variable set CNB_AGGRESSIVE_V2_LAST_CHECK \
             --repo "${GITHUB_REPOSITORY}" \
             --body "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; then
             echo "Updated CNB_AGGRESSIVE_V2_LAST_CHECK."
           else
-            echo "::warning::Could not update CNB_AGGRESSIVE_V2_LAST_CHECK with GITHUB_TOKEN (often HTTP 403). Manual runs still work; scheduled checks may re-evaluate daily until a PAT/variable permission is available."
+            echo "::warning::Could not update CNB_AGGRESSIVE_V2_LAST_CHECK with GITHUB_TOKEN (often HTTP 403). Daily checks still run; rebuilds still depend on missing Releases."
           fi
-
-      - name: Skip until the next ten-day check
-        if: ${{ steps.cadence.outputs.due != 'true' }}
-        run: echo "Not due yet; no upstream clone or CNB build was started."
 
   build-on-cnb:
     needs: check-upstream

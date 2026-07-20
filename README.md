@@ -132,11 +132,11 @@ Optional automation for one common combination:
 
 Logic:
 
-1. Scheduled checks only proceed when about ten days have passed since the last recorded check
-2. When due, clone upstream RC packaging metadata
-3. Compute the expected Release tag
-4. Build on CNB only if that Release does **not** already exist
-5. Manual runs always perform the upstream check immediately
+1. Runs on a daily schedule at **00:00 UTC (08:00 Asia/Shanghai)**
+2. Clones upstream RC packaging metadata
+3. Computes the expected Release tag
+4. Builds on CNB only if that Release does **not** already exist
+5. Manual runs perform the same check immediately
 
 If writing the Actions variable `CNB_AGGRESSIVE_V2_LAST_CHECK` is forbidden by repository token policy, the workflow warns and continues. The real build gate is still “does the Release already exist?”
 
